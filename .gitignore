@@ -1,0 +1,24 @@
+.DS_Store
+node_modules/
+.env
+.env.*
+dist/
+build/
+.vscode/
+coverage/
+npm-debug.log
+yarn-error.log
+.idea/
+*.log
+*.sqlite
+*.db
+# OS
+Thumbs.db
+desktop.ini
+
+# backup files
+*.bak
+*.tmp
+
+# IDE
+/.vscode/

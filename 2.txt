@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>لوحة متابعة تأجير السيارات</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+ body {
+   font-family: "Cairo", sans-serif;
+   background: #f2f4f7;
+   margin: 0;
+   padding: 20px;
+ }
+ h1 {
+   text-align: center;
+   margin-bottom: 20px;
+ }
+ .container {
+   display: grid;
+   grid-template-columns: 1fr 1fr;
+   gap: 20px;
+ }
+ .card {
+   background: white;
+   padding: 20px;
+   border-radius: 12px;
+   box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+ }
+ label {
+   font-weight: bold;
+ }
+ input, select, textarea {
+   width: 100%;
+   padding: 10px;
+   margin-top: 5px;
+   margin-bottom: 15px;
+   border-radius: 6px;
+   border: 1px solid #ccc;
+ }
+ button {
+   padding: 10px 15px;
+   background: #007bff;
+   color: white;
+   border: none;
+   border-radius: 8px;
+   cursor: pointer;
+   margin-left: 5px;
+ }
+ button.danger {
+   background: #d9534f;
+ }
+ button.secondary {
+   background: #6c757d;
+ }
+ table {
+   width: 100%;
+   border-collapse: collapse;
+ }
+ th, td {
+   padding: 10px;
+   border-bottom: 1px solid #ccc;
+   text-align: center;
+ }
+ .stats {
+   display: flex;
+   justify-content: space-between;
+   text-align: center;
+ }
+ .stats div {
+   flex: 1;
+   background: white;
+   border-radius: 12px;
+   padding: 20px;
+   margin: 5px;
+   box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+ }
+</style>
+</head>
+<body>
+<h1>لوحة متابعة تأجير السيارات</h1>
+
+<div class="stats">
+ <div><h3>إجمالي الإيرادات</h3><span id="totalIncome">0</span> أوقية</div>
+ <div><h3>إجمالي المصروفات</h3><span id="totalExpense">0</span> أوقية</div>
+ <div><h3>صافي الربح</h3><span id="netProfit">0</span> أوقية</div>
+</div>
+
+<div class="container">
+ <!-- إدارة السيارات -->
+ <div class="card">
+   <h2>إدارة السيارات</h2>
+   <label>اسم السيارة:</label>
+   <input type="text" id="carName" />
+   <button onclick="addCar()">إضافة سيارة</button>
+   <ul id="carList"></ul>
+ </div>
+
+ <!-- تسجيل الإيرادات والمصروفات -->
+ <div class="card">
+   <h2>تسجيل عملية</h2>
+   <label>التاريخ:</label>
+   <input type="date" id="dateInput" />
+   <label>السيارة:</label>
+   <select id="carSelect"></select>
+   <label>النوع:</label>
+   <select id="typeSelect">
+     <option value="income">إيراد</option>
+     <option value="expense">مصروف</option>
+   </select>
+   <label>المبلغ (أوقية):</label>
+   <input type="number" id="amountInput" />
+   <label>الفئة:</label>
+   <input type="text" id="categoryInput" />
+   <label>ملاحظة:</label>
+   <textarea id="noteInput"></textarea>
+   <button onclick="addEntry()">إضافة العملية</button>
+ </div>
+
+ <!-- الفلاتر والتقارير -->
+ <div class="card">
+   <h2>التقارير والفلاتر</h2>
+   <label>اختر يوم:</label>
+   <input type="date" id="filterDate" onchange="applyFilters()" />
+   <label>اختر سيارة:</label>
+   <select id="filterCar" onchange="applyFilters()"></select>
+   <button class="secondary" onclick="filterPeriod(7)">آخر 7 أيام</button>
+   <button class="secondary" onclick="filterPeriod(30)">آخر 30 يوم</button>
+   <button class="secondary" onclick="resetFilters()">إلغاء الفلاتر</button>
+   <hr>
+   <button onclick="exportCSV()">تصدير CSV</button>
+   <button class="danger" onclick="clearAll()">مسح كل البيانات</button>
+   <button onclick="addDemo()">إضافة بيانات تجريبية</button>
+ </div>
+
+ <!-- جدول العمليات -->
+ <div class="card" style="grid-column: span 2;">
+   <h2>جميع العمليات</h2>
+   <table>
+     <thead>
+       <tr>
+         <th>التاريخ</th>
+         <th>السيارة</th>
+         <th>النوع</th>
+         <th>المبلغ</th>
+         <th>الفئة</th>
+         <th>ملاحظة</th>
+         <th>حذف</th>
+       </tr>
+     </thead>
+     <tbody id="entriesTable"></tbody>
+   </table>
+ </div>
+
+ <!-- الرسم البياني -->
+ <div class="card" style="grid-column: span 2;">
+   <h2>الرسم البياني للإيرادات والمصروفات</h2>
+   <canvas id="chart"></canvas>
+ </div>
+</div>
+
+<script>
+let cars = JSON.parse(localStorage.getItem("cars") || "[]");
+let entries = JSON.parse(localStorage.getItem("entries") || "[]");
+
+function save() {
+ localStorage.setItem("cars", JSON.stringify(cars));
+ localStorage.setItem("entries", JSON.stringify(entries));
+ update();
+}
+
+function addCar() {
+ const name = carName.value.trim();
+ if (!name) return;
+ cars.push(name);
+ carName.value = "";
+ save();
+}
+
+function addEntry() {
+ const e = {
+   date: dateInput.value,
+   car: carSelect.value,
+   type: typeSelect.value,
+   amount: +amountInput.value,
+   category: categoryInput.value,
+   note: noteInput.value,
+ };
+ entries.push(e);
+ amountInput.value = "";
+ save();
+}
+
+function deleteEntry(i) {
+ entries.splice(i, 1);
+ save();
+}
+
+function renderCars() {
+ carList.innerHTML = cars.map(c => `<li>${c}</li>`).join("");
+ carSelect.innerHTML = cars.map(c => `<option>${c}</option>`).join("");
+ filterCar.innerHTML = `<option value="">الكل</option>` + cars.map(c => `<option>${c}</option>`).join("");
+}
+
+function applyFilters() {
+ let date = filterDate.value;
+ let car = filterCar.value;
+ let filtered = entries.filter(e => (
+   (!date || e.date === date) &&
+   (!car || e.car === car)
+ ));
+ renderTable(filtered);
+ renderStats(filtered);
+ renderChart(filtered);
+}
+
+function filterPeriod(days) {
+ const today = new Date();
+ const start = new Date(today - days * 24 * 60 * 60 * 1000);
+ let filtered = entries.filter(e => new Date(e.date) >= start);
+ renderTable(filtered);
+ renderStats(filtered);
+ renderChart(filtered);
+}
+
+function resetFilters() {
+ filterDate.value = "";
+ filterCar.value = "";
+ update();
+}
+
+function renderTable(list) {
+ entriesTable.innerHTML = list.map((e,i)=>`
+   <tr>
+     <td>${e.date}</td>
+     <td>${e.car}</td>
+     <td>${e.type === "income" ? "إيراد" : "مصروف"}</td>
+     <td>${e.amount}</td>
+     <td>${e.category}</td>
+     <td>${e.note}</td>
+     <td><button class="danger" onclick="deleteEntry(${i})">حذف</button></td>
+   </tr>`).join("");
+}
+
+function renderStats(list) {
+ let income = list.filter(e=>e.type==="income").reduce((a,b)=>a+b.amount,0);
+ let expense = list.filter(e=>e.type==="expense").reduce((a,b)=>a+b.amount,0);
+ totalIncome.textContent = income;
+ totalExpense.textContent = expense;
+ netProfit.textContent = income - expense;
+}
+
+let chart;
+function renderChart(list) {
+ let income = list.filter(e=>e.type==="income").reduce((a,b)=>a+b.amount,0);
+ let expense = list.filter(e=>e.type==="expense").reduce((a,b)=>a+b.amount,0);
+ if (chart) chart.destroy();
+ chart = new Chart(document.getElementById("chart"), {
+   type: "bar",
+   data: {
+     labels: ["إيرادات", "مصروفات"],
+     datasets: [{ data: [income, expense] }]
+   }
+ });
+}
+
+function exportCSV() {
+ let csv = "date,car,type,amount,category,note\n";
+ entries.forEach(e=>{
+   csv += `${e.date},${e.car},${e.type},${e.amount},${e.category},${e.note}\n`;
+ });
+ const blob = new Blob([csv],{type:"text/csv"});
+ const a = document.createElement("a");
+ a.href = URL.createObjectURL(blob);
+ a.download = "report.csv";
+ a.click();
+}
+
+function clearAll() {
+ if (!confirm("هل أنت متأكد؟")) return;
+ cars = [];
+ entries = [];
+ save();
+}
+
+function addDemo() {
+ cars=["تويوتا","كورولا","هيونداي"];
+ entries=[
+   {date:"2025-01-10",car:"تويوتا",type:"income",amount:9000,category:"ايجار يومي",note:""},
+   {date:"2025-01-10",car:"كورولا",type:"expense",amount:1200,category:"زيت",note:""},
+   {date:"2025-01-11",car:"هيونداي",type:"income",amount:8500,category:"ايجار",note:""}
+ ];
+ save();
+}
+
+function update() {
+ renderCars();
+ renderTable(entries);
+ renderStats(entries);
+ renderChart(entries);
+}
+
+update();
+</script>
+</body>
+</html>

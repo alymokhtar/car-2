@@ -1,0 +1,7 @@
+{
+  "projects": {
+    "default": "cars-9b2bd",
+    "development": "cars-dev-123",
+    "production": "cars-prod-456"
+  }
+}

@@ -1,0 +1,757 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Car Rental PRO — Dashboard</title>
+
+<!-- Fonts & libs -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+<style>
+  :root{
+    --bg:#f5f7fb;
+    --sidebar:#131427;
+    --accent:#5eead4;
+    --muted:#6b7280;
+    --card:#ffffff;
+    --danger:#ef4444;
+    --success:#10b981;
+  }
+  *{box-sizing:border-box;font-family:'Inter',system-ui,-apple-system,Segoe UI,Roboto,'Helvetica Neue',Arial;}
+  body{margin:0;background:var(--bg);color:#0f1724}
+  .app{display:flex;height:100vh;overflow:hidden}
+  /* Sidebar */
+  .sidebar{width:280px;background:linear-gradient(180deg,var(--sidebar),#0e1220);color:#fff;padding:22px;display:flex;flex-direction:column;gap:12px}
+  .logo{font-weight:800;font-size:18px;display:flex;align-items:center;gap:10px}
+  .logo .badge{background:var(--accent);color:#012;padding:6px 10px;border-radius:10px;font-weight:700}
+  .nav{margin-top:6px;display:flex;flex-direction:column;gap:6px}
+  .nav button{background:transparent;border:none;color:#dbeafe;padding:12px 14px;text-align:left;border-radius:10px;font-weight:600;cursor:pointer;display:flex;justify-content:space-between;align-items:center}
+  .nav button.active{background:rgba(255,255,255,0.06)}
+  .small{color:#9aa4b2;font-size:13px}
+  .sidebar .foot{margin-top:auto;font-size:13px;color:#93a2b6}
+  /* Main area */
+  .main{flex:1;padding:20px;overflow:auto}
+  .topbar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:18px}
+  .controls{display:flex;gap:8px;align-items:center}
+  .btn{background:linear-gradient(90deg,#06b6d4,#8b5cf6);border:none;color:#021;padding:10px 12px;border-radius:10px;cursor:pointer;font-weight:700}
+  .btn.ghost{background:transparent;border:1px solid rgba(0,0,0,0.08);color:inherit}
+  .card{background:var(--card);border-radius:12px;padding:16px;box-shadow:0 6px 18px rgba(2,6,23,0.06);margin-bottom:16px}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  .stat-title{font-size:13px;color:var(--muted)}
+  .stat-value{font-size:24px;font-weight:800;margin-top:6px}
+  table{width:100%;border-collapse:collapse}
+  th,td{padding:10px;border-bottom:1px solid #eef2f7;text-align:right;font-size:14px}
+  input,select,textarea{padding:10px;border-radius:8px;border:1px solid #e6eef6;background:#fff;width:100%;font-size:14px}
+  .row{display:flex;gap:10px}
+  .row .col{flex:1}
+  .tag{padding:6px 8px;border-radius:999px;font-weight:700}
+  .tag.in{background:var(--success);color:#021}
+  .tag.out{background:var(--danger);color:#021}
+  .muted{color:var(--muted)}
+  .settings-line{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-top:1px dashed #eef2f7}
+  /* responsive */
+  @media(max-width:980px){
+    .grid3{grid-template-columns:1fr}
+    .sidebar{display:none}
+    .app.mobile .sidebar{display:block;position:fixed;z-index:40;left:0;top:0;height:100vh}
+  }
+</style>
+</head>
+<body>
+
+<div class="app" id="appRoot">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar" id="sidebar">
+    <div class="logo"><div class="badge">CR</div><div>Car Rental <span class="muted">PRO</span></div></div>
+    <div class="small">Welcome, <strong id="uiUser">Guest</strong></div>
+
+    <nav class="nav" id="nav">
+      <button data-tab="dashboard" class="active">Dashboard <span class="muted">📊</span></button>
+      <button data-tab="cars">Cars Management <span class="muted">🚘</span></button>
+      <button data-tab="entries">Income & Expenses <span class="muted">💵</span></button>
+      <button data-tab="reports">Reports <span class="muted">📄</span></button>
+      <button data-tab="backup">Backup & Export <span class="muted">🗂</span></button>
+      <button data-tab="settings">Settings <span class="muted">⚙️</span></button>
+      <button data-tab="users">Users & Roles <span class="muted">👥</span></button>
+    </nav>
+
+    <div style="margin-top:10px">
+      <button id="btnLogin" class="btn ghost" style="width:100%">Sign in / Switch User</button>
+    </div>
+
+    <div class="foot muted" style="margin-top:auto">
+      Local mock server — no external network. Data stored in browser storage.
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main">
+    <div class="topbar">
+      <h1 style="margin:0">Car Rental PRO — Admin Dashboard</h1>
+      <div class="controls">
+        <label class="muted" style="font-size:13px">Auto backup</label>
+        <input type="checkbox" id="autoBackupToggle" />
+        <button id="btnDownloadBackup" class="btn ghost">Download Backup</button>
+        <button id="btnImportBackup" class="btn">Import Backup</button>
+      </div>
+    </div>
+
+    <!-- DASHBOARD -->
+    <section id="tab-dashboard" class="tab">
+      <div class="grid3" style="margin-bottom:12px">
+        <div class="card stat-box">
+          <div class="stat-title">Total Revenue</div>
+          <div class="stat-value" id="statRevenue">0</div>
+        </div>
+        <div class="card stat-box">
+          <div class="stat-title">Total Expenses</div>
+          <div class="stat-value" id="statExpenses">0</div>
+        </div>
+        <div class="card stat-box">
+          <div class="stat-title">Net Profit</div>
+          <div class="stat-value" id="statNet">0</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <h3 style="margin:0">Monthly Trend</h3>
+          <div class="muted">Revenue vs Expenses</div>
+        </div>
+        <canvas id="chartMonthly" height="120" style="margin-top:12px"></canvas>
+      </div>
+    </section>
+
+    <!-- CARS -->
+    <section id="tab-cars" class="tab" style="display:none">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <h3 style="margin:0">Cars Management</h3>
+          <div class="muted">Add, edit or delete cars</div>
+        </div>
+
+        <div style="margin-top:12px" class="row">
+          <div class="col"><input id="carName" placeholder="Car name / model (e.g. Toyota Corolla 2019)" /></div>
+          <div style="width:160px"><input id="carPlate" placeholder="Plate (optional)" /></div>
+          <div style="width:120px"><button id="btnAddCar" class="btn">Add Car</button></div>
+        </div>
+
+        <div style="margin-top:14px">
+          <table id="carsTable">
+            <thead><tr><th>Car</th><th>Plate</th><th>Entries</th><th>Actions</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ENTRIES -->
+    <section id="tab-entries" class="tab" style="display:none">
+      <div class="card">
+        <h3 style="margin:0">Add Entry</h3>
+        <div class="muted">Record income or expense for any car</div>
+
+        <div style="margin-top:12px" class="row">
+          <div class="col"><select id="entryCar"></select></div>
+          <div style="width:170px"><input id="entryDate" type="date" /></div>
+          <div style="width:140px">
+            <select id="entryType"><option value="income">Income</option><option value="expense">Expense</option></select>
+          </div>
+        </div>
+
+        <div style="margin-top:10px" class="row">
+          <div class="col"><input id="entryAmount" placeholder="Amount (numeric)" type="number" step="0.01" /></div>
+          <div class="col"><input id="entryCategory" placeholder="Category (e.g. Rent, Fuel, Repair)" /></div>
+          <div style="width:160px"><button id="btnAddEntry" class="btn">Save Entry</button></div>
+        </div>
+
+      </div>
+
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <h3 style="margin:0">Entries</h3>
+          <div>
+            <select id="filterCar"><option value="all">All cars</option></select>
+            <input id="filterFrom" type="date" />
+            <input id="filterTo" type="date" />
+            <button id="btnApplyFilter" class="btn ghost">Apply</button>
+            <button id="btnClearFilter" class="btn ghost">Clear</button>
+          </div>
+        </div>
+
+        <div style="margin-top:12px;overflow:auto">
+          <table id="entriesTable">
+            <thead><tr><th>Date</th><th>Car</th><th>Type</th><th>Category</th><th>Amount</th><th>Note</th><th>Actions</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- REPORTS -->
+    <section id="tab-reports" class="tab" style="display:none">
+      <div class="card">
+        <h3 style="margin:0">Generate Reports</h3>
+        <div class="muted">Create summary, monthly or custom reports and export as PDF / Excel / CSV</div>
+
+        <div style="margin-top:12px" class="row">
+          <div class="col"><select id="reportCar"><option value="all">All cars</option></select></div>
+          <div style="width:170px"><input id="reportFrom" type="date" /></div>
+          <div style="width:170px"><input id="reportTo" type="date" /></div>
+          <div style="width:130px"><button id="btnGenerate" class="btn">Generate</button></div>
+        </div>
+
+        <div style="margin-top:12px" id="reportSummary" class="card"></div>
+
+        <div style="margin-top:8px;display:flex;gap:8px">
+          <button id="btnExportCSVReport" class="btn ghost">Export CSV</button>
+          <button id="btnExportXLS" class="btn ghost">Export Excel</button>
+          <button id="btnExportPDF" class="btn">Export PDF</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- BACKUP -->
+    <section id="tab-backup" class="tab" style="display:none">
+      <div class="card">
+        <h3>Backup & Restore</h3>
+        <div class="muted">Download a JSON backup or restore from a file. Auto-backup can keep one copy in localStorage.</div>
+        <div style="margin-top:12px" class="row">
+          <div style="width:160px"><button id="btnDownload" class="btn">Download Backup</button></div>
+          <div style="width:160px"><button id="btnUpload" class="btn ghost">Restore Backup</button></div>
+          <div style="width:200px"><button id="btnClearAll" class="btn ghost" style="background:#fee2e2;color:var(--danger)">Reset All Data</button></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section id="tab-settings" class="tab" style="display:none">
+      <div class="card">
+        <h3>Settings</h3>
+        <div class="muted">Application settings (currency, auto-backup interval, language)</div>
+
+        <div style="margin-top:12px">
+          <div class="settings-line">
+            <div>
+              <div style="font-weight:700">Currency</div>
+              <div class="muted">Choose display currency</div>
+            </div>
+            <div style="width:200px"><input id="settingCurrency" value="MRU" /></div>
+          </div>
+
+          <div class="settings-line">
+            <div>
+              <div style="font-weight:700">Auto Backup Interval (minutes)</div>
+              <div class="muted">When Auto Backup is enabled, this interval defines how often a backup is auto-saved.</div>
+            </div>
+            <div style="width:220px"><input id="settingAutoInterval" type="number" min="1" value="60" /></div>
+          </div>
+
+          <div class="settings-line">
+            <div>
+              <div style="font-weight:700">Theme</div>
+              <div class="muted">Light / Dark (UI theme)</div>
+            </div>
+            <div style="width:160px">
+              <select id="settingTheme"><option value="light">Light</option><option value="dark">Dark</option></select>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- USERS -->
+    <section id="tab-users" class="tab" style="display:none">
+      <div class="card">
+        <h3>Users & Roles</h3>
+        <div class="muted">Manage app users (mock auth). Admin can create/delete users and assign roles.</div>
+
+        <div style="margin-top:12px" class="row">
+          <div class="col"><input id="newUserName" placeholder="Full name" /></div>
+          <div class="col"><input id="newUserEmail" placeholder="Email" /></div>
+          <div style="width:160px"><select id="newUserRole"><option value="admin">Admin</option><option value="manager">Manager</option><option value="user">User</option></select></div>
+          <div style="width:120px"><button id="btnAddUser" class="btn">Add User</button></div>
+        </div>
+
+        <div style="margin-top:12px">
+          <table id="usersTable"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Actions</th></tr></thead><tbody></tbody></table>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- Login Modal -->
+<div id="modalLogin" style="display:none;position:fixed;inset:0;background:rgba(2,6,23,0.5);align-items:center;justify-content:center;z-index:50">
+  <div style="background:#fff;padding:18px;border-radius:12px;width:420px">
+    <h3 style="margin:0 0 8px 0">Sign in (mock)</h3>
+    <div class="small">Demo users: admin@demo (admin), manager@demo (manager), user@demo (user) — password: 123456</div>
+    <div style="margin-top:12px" class="row">
+      <div class="col"><input id="loginEmail" placeholder="Email" value="admin@demo" /></div>
+      <div style="width:160px"><input id="loginPass" placeholder="Password" value="123456" /></div>
+    </div>
+    <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">
+      <button id="btnDoLogin" class="btn">Sign in</button>
+      <button id="btnCloseLogin" class="btn ghost">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============================
+   Mock "backend" state stored in localStorage
+   ============================ */
+const STORAGE_KEY = 'car_rental_pro_v1';
+const AUTO_BACKUP_KEY = 'car_rental_pro_autobackup';
+
+// Default initial state
+function defaultState(){
+  const today = new Date().toISOString().slice(0,10);
+  return {
+    users:[
+      {id:1,name:'Administrator',email:'admin@demo',password:'123456',role:'admin'},
+      {id:2,name:'Manager',email:'manager@demo',password:'123456',role:'manager'},
+      {id:3,name:'Staff',email:'user@demo',password:'123456',role:'user'}
+    ],
+    cars:[
+      {id: 'c1', name:'Toyota Corolla 2019', plate:'T-1234'},
+      {id: 'c2', name:'Hyundai Accent 2018', plate:'H-4321'}
+    ],
+    entries:[
+      {id:'e1',carId:'c1',date:today,type:'income',amount:1200,category:'Daily rent',note:'Daily rent'},
+      {id:'e2',carId:'c2',date:today,type:'expense',amount:200,category:'Fuel',note:'Fuel refill'}
+    ],
+    settings:{
+      currency:'MRU',
+      autoBackupIntervalMinutes:60,
+      theme:'light'
+    }
+  };
+}
+
+let state = loadState();
+let currentUser = JSON.parse(localStorage.getItem('cr_current_user')||'null');
+let autoBackupTimer = null;
+
+// --- Persistence
+function loadState(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(!raw){ const s = defaultState(); localStorage.setItem(STORAGE_KEY, JSON.stringify(s)); return s; }
+    return JSON.parse(raw);
+  }catch(e){
+    console.error('failed load',e); const s = defaultState(); localStorage.setItem(STORAGE_KEY, JSON.stringify(s)); return s;
+  }
+}
+function saveState(){
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+/* ============================
+   UI helpers & rendering
+   ============================ */
+const tabs = Array.from(document.querySelectorAll('[data-tab]')).map(b=>b.dataset.tab);
+document.querySelectorAll('#nav button').forEach(btn=>{
+  btn.addEventListener('click', ()=> {
+    document.querySelectorAll('#nav button').forEach(x=>x.classList.remove('active'));
+    btn.classList.add('active');
+    showTab(btn.dataset.tab);
+  });
+});
+
+function showTab(id){
+  document.querySelectorAll('.tab').forEach(t=>t.style.display='none');
+  const el = document.getElementById('tab-'+id);
+  if(el) el.style.display='block';
+  // render if needed
+  if(id==='cars') renderCarsTable();
+  if(id==='entries') renderEntriesTable();
+  if(id==='reports') renderReportSummary();
+  if(id==='backup') {}
+  if(id==='users') renderUsers();
+  if(id==='dashboard') updateDashboard();
+  // update UI user label
+  document.getElementById('uiUser').innerText = currentUser ? `${currentUser.name} (${currentUser.role})` : 'Guest';
+}
+
+/* ---- Chart ---- */
+let monthlyChart = null;
+function updateMonthlyChart(){
+  // build last 12 months sums
+  const now = new Date();
+  const months = [];
+  const revData = [], expData = [];
+  for(let i=11;i>=0;i--){
+    const d = new Date(now.getFullYear(), now.getMonth()-i, 1);
+    const key = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+    months.push(d.toLocaleString('default',{month:'short',year:'numeric'}));
+    const entries = state.entries.filter(en=> en.date.startsWith(key));
+    const rev = entries.filter(e=>e.type==='income').reduce((s,e)=>s+Number(e.amount),0);
+    const exp = entries.filter(e=>e.type==='expense').reduce((s,e)=>s+Number(e.amount),0);
+    revData.push(rev); expData.push(exp);
+  }
+
+  const ctx = document.getElementById('chartMonthly').getContext('2d');
+  if(monthlyChart) monthlyChart.destroy();
+  monthlyChart = new Chart(ctx, {
+    type:'line',
+    data:{
+      labels: months,
+      datasets:[
+        {label:'Revenue', data:revData, tension:0.3, borderColor:'#06b6d4', backgroundColor:'rgba(6,182,212,0.06)', fill:true},
+        {label:'Expenses', data:expData, tension:0.3, borderColor:'#ef4444', backgroundColor:'rgba(239,68,68,0.06)', fill:true}
+      ]
+    },
+    options:{responsive:true,plugins:{legend:{position:'top'}}}
+  });
+}
+
+/* ---- Dashboard numbers ---- */
+function updateDashboard(){
+  const rev = state.entries.filter(e=>e.type==='income').reduce((s,e)=>s+Number(e.amount),0);
+  const exp = state.entries.filter(e=>e.type==='expense').reduce((s,e)=>s+Number(e.amount),0);
+  document.getElementById('statRevenue').innerText = formatMoney(rev);
+  document.getElementById('statExpenses').innerText = formatMoney(exp);
+  document.getElementById('statNet').innerText = formatMoney(rev-exp);
+  updateMonthlyChart();
+}
+
+/* ---- Cars table ---- */
+function renderCarsTable(){
+  const tbody = document.querySelector('#carsTable tbody'); tbody.innerHTML='';
+  state.cars.forEach(c=>{
+    const count = state.entries.filter(e=>e.carId===c.id).length;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${escapeHtml(c.name)}</td><td>${escapeHtml(c.plate || '')}</td><td class="muted">${count} entries</td>
+      <td style="text-align:left">
+        <button class="btn ghost" data-act="edit" data-id="${c.id}">Edit</button>
+        <button class="btn" data-act="del" data-id="${c.id}" style="background:#fee2e2;color:var(--danger)">Delete</button>
+      </td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+/* ---- Entries list & form ---- */
+function populateCarSelects(){
+  const selects = ['entryCar','filterCar','reportCar','entryCar'];
+  selects.forEach(id=>{
+    const el = document.getElementById(id);
+    if(!el) return;
+    el.innerHTML = '<option value="all">All cars</option>';
+    state.cars.forEach(c=> el.insertAdjacentHTML('beforeend', `<option value="${c.id}">${escapeHtml(c.name)}</option>`));
+  });
+}
+function renderEntriesTable(filter=null){
+  populateCarSelects();
+  const tbody = document.querySelector('#entriesTable tbody'); tbody.innerHTML='';
+  let rows = state.entries.slice().sort((a,b)=> new Date(b.date) - new Date(a.date));
+  // apply filter if any
+  const carFilter = document.getElementById('filterCar').value;
+  const from = document.getElementById('filterFrom').value;
+  const to = document.getElementById('filterTo').value;
+  if(carFilter && carFilter!=='all') rows = rows.filter(r=> r.carId===carFilter);
+  if(from) rows = rows.filter(r=> r.date >= from);
+  if(to) rows = rows.filter(r=> r.date <= to);
+
+  rows.forEach((e,i)=>{
+    const car = state.cars.find(c=>c.id===e.carId);
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${e.date}</td>
+      <td>${escapeHtml(car?car.name:'-')}</td>
+      <td>${e.type==='income'?'<span class="tag in">Income</span>':'<span class="tag out">Expense</span>'}</td>
+      <td>${escapeHtml(e.category||'')}</td>
+      <td style="font-weight:800">${formatMoney(e.amount)}</td>
+      <td>${escapeHtml(e.note||'')}</td>
+      <td style="text-align:left">
+        <button class="btn ghost" data-act="edit-entry" data-id="${e.id}">Edit</button>
+        <button class="btn" data-act="del-entry" data-id="${e.id}" style="background:#fee2e2;color:var(--danger)">Delete</button>
+      </td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+/* ---- Reports ---- */
+function renderReportSummary(){
+  const carId = document.getElementById('reportCar').value;
+  const from = document.getElementById('reportFrom').value;
+  const to = document.getElementById('reportTo').value;
+  let rows = state.entries.slice();
+  if(carId && carId!=='all') rows = rows.filter(r=>r.carId===carId);
+  if(from) rows = rows.filter(r=>r.date>=from);
+  if(to) rows = rows.filter(r=>r.date<=to);
+  const income = rows.filter(r=>r.type==='income').reduce((s,r)=>s+Number(r.amount),0);
+  const expense = rows.filter(r=>r.type==='expense').reduce((s,r)=>s+Number(r.amount),0);
+  const net = income - expense;
+  const out = document.getElementById('reportSummary');
+  out.innerHTML = `<div style="display:flex;gap:16px"><div class="card" style="flex:1"><div class="muted">Revenue</div><div style="font-weight:800;font-size:20px">${formatMoney(income)}</div></div>
+    <div class="card" style="flex:1"><div class="muted">Expenses</div><div style="font-weight:800;font-size:20px">${formatMoney(expense)}</div></div>
+    <div class="card" style="flex:1"><div class="muted">Net</div><div style="font-weight:800;font-size:20px">${formatMoney(net)}</div></div></div>
+    <div style="margin-top:12px">
+      <table style="width:100%"><thead><tr><th>Date</th><th>Car</th><th>Type</th><th>Category</th><th>Amount</th></tr></thead>
+      <tbody>${rows.map(r=>`<tr><td>${r.date}</td><td>${escapeHtml((state.cars.find(c=>c.id===r.carId)||{}).name||'-')}</td><td>${r.type}</td><td>${escapeHtml(r.category||'')}</td><td style="font-weight:700">${formatMoney(r.amount)}</td></tr>`).join('')}</tbody></table>
+    </div>`;
+}
+
+/* ---- Users ---- */
+function renderUsers(){
+  const tbody = document.querySelector('#usersTable tbody'); tbody.innerHTML='';
+  state.users.forEach(u=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${escapeHtml(u.name)}</td><td>${escapeHtml(u.email)}</td><td>${escapeHtml(u.role)}</td>
+      <td style="text-align:left">
+        <button class="btn ghost" data-act="impersonate" data-id="${u.id}">Impersonate</button>
+        <button class="btn" data-act="del-user" data-id="${u.id}" style="background:#fee2e2;color:var(--danger)">Delete</button>
+      </td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+/* ============================
+   Events & actions
+   ============================ */
+
+// Add car
+document.getElementById('btnAddCar').addEventListener('click', ()=>{
+  const name = document.getElementById('carName').value.trim();
+  const plate = document.getElementById('carPlate').value.trim();
+  if(!name) return alert('Enter car name');
+  const id = 'c'+Date.now().toString(36);
+  state.cars.push({id,name,plate});
+  saveState(); document.getElementById('carName').value=''; document.getElementById('carPlate').value='';
+  renderCarsTable(); populateCarSelects(); updateDashboard();
+});
+
+// Cars actions (edit/delete)
+document.querySelector('#carsTable tbody').addEventListener('click', (ev)=>{
+  const btn = ev.target.closest('button'); if(!btn) return;
+  const act = btn.dataset.act; const id = btn.dataset.id;
+  if(act==='del'){
+    if(!confirm('Delete car and its entries?')) return;
+    state.cars = state.cars.filter(c=>c.id!==id);
+    state.entries = state.entries.filter(e=>e.carId!==id);
+    saveState(); renderCarsTable(); renderEntriesTable(); updateDashboard();
+  } else if(act==='edit'){
+    const car = state.cars.find(c=>c.id===id);
+    const newName = prompt('Car name', car.name);
+    if(newName){ car.name=newName; saveState(); renderCarsTable(); populateCarSelects(); renderEntriesTable(); updateDashboard(); }
+  }
+});
+
+// Add entry
+document.getElementById('btnAddEntry').addEventListener('click', ()=>{
+  const carId = document.getElementById('entryCar').value;
+  const date = document.getElementById('entryDate').value || new Date().toISOString().slice(0,10);
+  const type = document.getElementById('entryType').value;
+  const amount = parseFloat(document.getElementById('entryAmount').value);
+  const category = document.getElementById('entryCategory').value.trim();
+  if(!carId || carId==='all') return alert('Select a car'); if(isNaN(amount) || amount<=0) return alert('Enter a valid amount');
+  const id = 'e'+Date.now().toString(36);
+  state.entries.push({id,carId,date,type,amount,category,note:''});
+  saveState(); document.getElementById('entryAmount').value=''; document.getElementById('entryCategory').value='';
+  renderEntriesTable(); updateDashboard();
+});
+
+// Entries table actions
+document.querySelector('#entriesTable tbody').addEventListener('click', (ev)=>{
+  const btn = ev.target.closest('button'); if(!btn) return;
+  const act = btn.dataset.act; const id = btn.dataset.id;
+  if(act==='del-entry'){ if(!confirm('Delete this entry?')) return; state.entries = state.entries.filter(e=>e.id!==id); saveState(); renderEntriesTable(); updateDashboard(); }
+  if(act==='edit-entry'){ const e = state.entries.find(x=>x.id===id); const newAmt = prompt('Amount', e.amount); if(newAmt!==null){ e.amount = parseFloat(newAmt); saveState(); renderEntriesTable(); updateDashboard(); } }
+});
+
+// Filters
+document.getElementById('btnApplyFilter').addEventListener('click', ()=> renderEntriesTable());
+document.getElementById('btnClearFilter').addEventListener('click', ()=> { document.getElementById('filterCar').value='all'; document.getElementById('filterFrom').value=''; document.getElementById('filterTo').value=''; renderEntriesTable(); });
+
+// Report generation
+document.getElementById('btnGenerate').addEventListener('click', ()=> renderReportSummary());
+
+// Export report CSV
+document.getElementById('btnExportCSVReport').addEventListener('click', ()=>{
+  const html = document.getElementById('reportSummary').innerText;
+  // build CSV from current filtered rows
+  const carId = document.getElementById('reportCar').value;
+  const from = document.getElementById('reportFrom').value;
+  const to = document.getElementById('reportTo').value;
+  let rows = state.entries.slice();
+  if(carId && carId!=='all') rows = rows.filter(r=>r.carId===carId);
+  if(from) rows = rows.filter(r=>r.date>=from); if(to) rows = rows.filter(r=>r.date<=to);
+  let csv = 'date,car,type,category,amount\\n';
+  rows.forEach(r=> csv += `${r.date},${(state.cars.find(c=>c.id===r.carId)||{}).name || ''},${r.type},${r.category || ''},${r.amount}\\n`);
+  downloadFile('report.csv', 'text/csv;charset=utf-8;', csv);
+});
+
+// Export report Excel (SheetJS)
+document.getElementById('btnExportXLS').addEventListener('click', ()=>{
+  const carId = document.getElementById('reportCar').value;
+  const from = document.getElementById('reportFrom').value;
+  const to = document.getElementById('reportTo').value;
+  let rows = state.entries.slice();
+  if(carId && carId!=='all') rows = rows.filter(r=>r.carId===carId);
+  if(from) rows = rows.filter(r=>r.date>=from); if(to) rows = rows.filter(r=>r.date<=to);
+  const wsData = [['Date','Car','Type','Category','Amount']];
+  rows.forEach(r=> wsData.push([r.date,(state.cars.find(c=>c.id===r.carId)||{}).name||'',r.type,r.category||'',r.amount]));
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(wsData);
+  XLSX.utils.book_append_sheet(wb, ws, 'Report');
+  XLSX.writeFile(wb, 'report.xlsx');
+});
+
+// Export report PDF (jsPDF)
+document.getElementById('btnExportPDF').addEventListener('click', async ()=>{
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({unit:'pt',format:'a4'});
+  const title = 'Car Rental Report';
+  doc.setFontSize(14); doc.text(title,40,40);
+  // add summary text
+  doc.setFontSize(11);
+  const summaryText = document.getElementById('reportSummary').innerText;
+  doc.text(summaryText,40,70);
+  doc.save('report.pdf');
+});
+
+// Backup download
+document.getElementById('btnDownload').addEventListener('click', ()=> {
+  const blob = JSON.stringify(state, null, 2);
+  downloadFile('backup_car_rental.json','application/json;charset=utf-8;', blob);
+});
+
+// Upload/restore backup
+document.getElementById('btnUpload').addEventListener('click', ()=> {
+  const inp = document.createElement('input'); inp.type='file'; inp.accept='.json';
+  inp.onchange = async ()=> {
+    const file = inp.files[0]; if(!file) return;
+    const txt = await file.text();
+    try{
+      const obj = JSON.parse(txt);
+      // basic validation
+      if(!obj.cars || !obj.entries || !obj.users){ return alert('Invalid backup file'); }
+      if(!confirm('Restore backup? This will replace current data.')) return;
+      state = obj; saveState(); renderAll(); alert('Restored');
+    }catch(err){ alert('Invalid file'); }
+  };
+  inp.click();
+});
+
+// Clear all data (reset)
+document.getElementById('btnClearAll').addEventListener('click', ()=> {
+  if(!confirm('Reset everything to default?')) return;
+  state = defaultState(); saveState(); renderAll(); alert('Reset done');
+});
+
+// Auto backup controls
+document.getElementById('autoBackupToggle').addEventListener('change', (e)=>{
+  const enabled = e.target.checked;
+  localStorage.setItem(AUTO_BACKUP_KEY, JSON.stringify({enabled,ts:Date.now()}));
+  setupAutoBackup();
+});
+document.getElementById('btnDownloadBackup').addEventListener('click', ()=> {
+  const copy = JSON.stringify(state, null, 2);
+  downloadFile('autobackup.json','application/json;charset=utf-8;', copy);
+});
+function setupAutoBackup(){
+  const raw = JSON.parse(localStorage.getItem(AUTO_BACKUP_KEY) || 'null');
+  const enabled = raw && raw.enabled;
+  document.getElementById('autoBackupToggle').checked = !!enabled;
+  if(autoBackupTimer) { clearInterval(autoBackupTimer); autoBackupTimer = null; }
+  if(enabled){
+    const minutes = parseInt(document.getElementById('settingAutoInterval').value || '60',10);
+    autoBackupTimer = setInterval(()=> {
+      localStorage.setItem('car_rental_pro_backup', JSON.stringify({ts:Date.now(),state}));
+      console.log('Auto backup saved');
+    }, Math.max(1,minutes) * 60 * 1000);
+  }
+}
+
+// Settings apply
+document.getElementById('settingAutoInterval').addEventListener('change', ()=> { setupAutoBackup(); saveState(); });
+document.getElementById('settingCurrency').addEventListener('change', ()=> { state.settings.currency = document.getElementById('settingCurrency').value; saveState(); });
+document.getElementById('settingTheme').addEventListener('change', (e)=> {
+  state.settings.theme = e.target.value; saveState();
+  // simple theme switch
+  if(e.target.value==='dark') document.body.style.background = '#0b1220'; else document.body.style.background = 'var(--bg)';
+});
+
+// Users management
+document.getElementById('btnAddUser').addEventListener('click', ()=>{
+  const name = document.getElementById('newUserName').value.trim();
+  const email = document.getElementById('newUserEmail').value.trim();
+  const role = document.getElementById('newUserRole').value;
+  if(!name||!email) return alert('Fill name and email');
+  const id = Date.now();
+  state.users.push({id,name,email,password:'123456',role});
+  saveState(); renderUsers(); alert('User added (default password: 123456)');
+});
+
+// Users actions
+document.querySelector('#usersTable tbody').addEventListener('click', (ev)=>{
+  const btn = ev.target.closest('button'); if(!btn) return;
+  const act = btn.dataset.act; const id = Number(btn.dataset.id);
+  if(act==='impersonate'){ const u = state.users.find(x=>x.id===id); currentUser = u; localStorage.setItem('cr_current_user', JSON.stringify(currentUser)); showTab('dashboard'); renderAll(); alert('Signed in as '+u.name); }
+  if(act==='del-user'){ if(!confirm('Delete this user?')) return; state.users = state.users.filter(x=>x.id!==id); saveState(); renderUsers(); }
+});
+
+/* ---- Login modal ---- */
+document.getElementById('btnLogin').addEventListener('click', ()=> { document.getElementById('modalLogin').style.display='flex'; });
+document.getElementById('btnCloseLogin').addEventListener('click', ()=> { document.getElementById('modalLogin').style.display='none'; });
+document.getElementById('btnDoLogin').addEventListener('click', ()=> {
+  const email = document.getElementById('loginEmail').value.trim();
+  const pass = document.getElementById('loginPass').value;
+  const u = state.users.find(x=>x.email===email && x.password===pass);
+  if(!u) return alert('Invalid credentials (use demo credentials)');
+  currentUser = u;
+  localStorage.setItem('cr_current_user', JSON.stringify(currentUser));
+  document.getElementById('modalLogin').style.display='none';
+  renderAll(); alert('Signed in as '+u.name);
+});
+
+/* ============================
+   Utilities
+   ============================ */
+function formatMoney(v){ return (Number(v)||0).toLocaleString() + ' ' + (state.settings.currency || 'MRU'); }
+function escapeHtml(s){ if(!s && s!==0) return ''; return String(s).replace(/[&<>"']/g, function(m){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]); }); }
+function downloadFile(filename, mime, content){
+  const blob = new Blob([content], {type: mime});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url);
+}
+
+/* ============================
+   Init & render
+   ============================ */
+function renderAll(){
+  populateCarSelects();
+  renderCarsTable();
+  renderEntriesTable();
+  renderUsers();
+  updateDashboard();
+  renderReportSummary();
+  // fill settings UI
+  document.getElementById('settingCurrency').value = state.settings.currency || 'MRU';
+  document.getElementById('settingAutoInterval').value = state.settings.autoBackupIntervalMinutes || 60;
+  document.getElementById('settingTheme').value = state.settings.theme || 'light';
+  document.getElementById('uiUser').innerText = currentUser ? `${currentUser.name} (${currentUser.role})` : 'Guest';
+  setupAutoBackup();
+}
+
+function initDemoDataIfEmpty(){
+  if(!state || !state.cars || state.cars.length===0){ state = defaultState(); saveState(); }
+}
+
+initDemoDataIfEmpty();
+renderAll();
+
+// expose for debugging
+window.__cr_state = state;
+window.__cr_save = ()=> { saveState(); alert('Saved'); };
+
+</script>
+
+</body>
+</html>

@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>لوحة التحكم - تأجير سيارات</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root{
+      --bg:#0f1724; /* dark navy */
+      --card:#0b1220;
+      --accent:#06b6d4; /* teal */
+      --muted:#94a3b8;
+      --glass: rgba(255,255,255,0.03);
+      --success:#10b981;
+      --danger:#ef4444;
+    }
+    *{box-sizing:border-box;font-family:'Cairo',sans-serif}
+    body{margin:0;background:linear-gradient(180deg,var(--bg),#071025);color:#e6eef6;padding:20px}
+
+    .container{max-width:1200px;margin:0 auto}
+    header{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+    .brand{display:flex;align-items:center;gap:12px}
+    .logo{width:56px;height:56px;border-radius:12px;background:linear-gradient(135deg,var(--accent),#7c3aed);display:flex;align-items:center;justify-content:center;font-weight:700}
+    h1{font-size:18px;margin:0}
+    .sub{color:var(--muted);font-size:13px}
+
+    .layout{display:grid;grid-template-columns:320px 1fr;gap:18px}
+
+    /* sidebar */
+    .sidebar{background:var(--card);border-radius:12px;padding:14px}
+    .card-title{font-weight:700;margin-bottom:12px}
+    .cars-list{display:flex;flex-direction:column;gap:8px}
+    .car{padding:10px;border-radius:8px;background:var(--glass);display:flex;justify-content:space-between;align-items:center}
+    .car input{background:transparent;border:none;color:inherit}
+    .small{font-size:12px;color:var(--muted)}
+    .btn{background:linear-gradient(90deg,var(--accent),#8b5cf6);border:none;padding:8px 12px;border-radius:8px;color:#022;cursor:pointer;font-weight:600}
+    .btn-outline{background:transparent;border:1px solid rgba(255,255,255,0.06);padding:8px 10px;border-radius:8px;color:var(--muted);cursor:pointer}
+
+    /* main */
+    .main-grid{display:grid;grid-template-columns:1fr 420px;gap:18px}
+    .panel{background:var(--card);border-radius:12px;padding:14px}
+    .metrics{display:flex;gap:12px}
+    .metric{flex:1;padding:12px;border-radius:10px;background:linear-gradient(180deg,rgba(255,255,255,0.02),transparent)}
+    .metric h3{margin:0;font-size:14px}
+    .metric p{margin:6px 0 0;font-size:20px;font-weight:700}
+
+    form .row{display:flex;gap:8px;margin-bottom:10px}
+    input,select,textarea{padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit;width:100%}
+    table{width:100%;border-collapse:collapse;margin-top:10px}
+    th,td{padding:8px;text-align:right;border-bottom:1px dashed rgba(255,255,255,0.03);font-size:13px}
+    .actions{display:flex;gap:8px}
+    .tag{display:inline-block;padding:6px 8px;border-radius:999px;background:rgba(255,255,255,0.03);font-size:12px}
+
+    footer{margin-top:18px;color:var(--muted);font-size:13px}
+
+    /* responsive */
+    @media(max-width:900px){.layout{grid-template-columns:1fr}.main-grid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="brand">
+        <div class="logo">سي</div>
+        <div>
+          <h1>لوحة تحكم تأجير السيارات</h1>
+          <div class="sub">تابع إيراداتك ومصروفاتك اليومية لكل سيارة</div>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="btn" id="exportCsvBtn">تصدير CSV</button>
+        <button class="btn" id="resetBtn">مسح البيانات</button>
+      </div>
+    </header>
+
+    <div class="layout">
+      <aside class="sidebar panel">
+        <div class="card-title">قائمة السيارات</div>
+        <div style="display:flex;gap:8px;margin-bottom:12px">
+          <input id="newCarInput" placeholder="أضف رقم/اسم السيارة" />
+          <button class="btn" id="addCarBtn">أضف</button>
+        </div>
+        <div class="cars-list" id="carsList"></div>
+        <hr style="margin:12px 0;border:none;border-top:1px dashed rgba(255,255,255,0.03)">
+        <div class="small">تصفية المداخل</div>
+        <div style="margin-top:8px;display:flex;gap:8px">
+          <select id="filterCar">
+            <option value="all">كل السيارات</option>
+          </select>
+          <input type="date" id="filterDate" />
+        </div>
+      </aside>
+
+      <main>
+        <div class="main-grid">
+          <section>
+            <div class="panel">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                <div>
+                  <div class="card-title">سجل الإيرادات والمصروفات</div>
+                  <div class="small">أضف مُدخل يومي — الإيجار، الوقود، صيانة، إلخ.</div>
+                </div>
+              </div>
+
+              <form id="entryForm">
+                <div class="row">
+                  <select id="carSelect" required></select>
+                  <input type="date" id="entryDate" required />
+                </div>
+                <div class="row">
+                  <select id="typeSelect" required>
+                    <option value="income">إيراد</option>
+                    <option value="expense">مصروف</option>
+                  </select>
+                  <input id="amountInput" type="number" step="0.01" placeholder="المبلغ" required />
+                </div>
+                <div class="row">
+                  <input id="categoryInput" placeholder="فئة (مثلاً: إيجار، وقود، صيانة)" />
+                  <input id="noteInput" placeholder="ملاحظة (اختياري)" />
+                </div>
+                <div style="display:flex;gap:8px;justify-content:flex-start">
+                  <button class="btn" type="submit">حفظ</button>
+                  <button class="btn btn-outline" type="button" id="addSample">أضف بيانات تجريبية</button>
+                </div>
+              </form>
+
+              <div style="margin-top:14px">
+                <div class="metrics">
+                  <div class="metric">
+                    <h3>إجمالي الإيرادات</h3>
+                    <p id="totalIncome">0 أوقية</p>
+                  </div>
+                  <div class="metric">
+                    <h3>إجمالي المصروفات</h3>
+                    <p id="totalExpense">0 أوقية</p>
+                  </div>
+                  <div class="metric">
+                    <h3>صافي الربح</h3>
+                    <p id="netProfit">0 أوقية</p>
+                  </div>
+                </div>
+              </div>
+
+              <div style="margin-top:14px">
+                <canvas id="summaryChart" height="120"></canvas>
+              </div>
+
+              <div style="margin-top:12px">
+                <div class="card-title">المداخل</div>
+                <div id="entriesContainer"></div>
+              </div>
+            </div>
+          </section>
+
+          <aside>
+            <div class="panel">
+              <div class="card-title">تفاصيل السيارة المحددة</div>
+              <div id="carStats">
+                <div class="small">اختر سيارة من القائمة أو من الفلتر لعرض الإحصاءات.</div>
+              </div>
+            </div>
+
+            <div class="panel" style="margin-top:12px">
+              <div class="card-title">فلاتر وتقارير سريعة</div>
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <button class="btn" id="showLast7">آخر 7 أيام</button>
+                <button class="btn" id="showLast30">آخر 30 يوم</button>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </main>
+    </div>
+
+    <footer>تم الإنشاء بواسطة لوحة ميسا — لوحة بسيطة لإدارة تأجير السيارات</footer>
+  </div>
+
+  <script>
+    // ====== بيانات وتخزين محلي ======
+    const STORAGE_KEY = 'car_rental_dashboard_v1';
+    let state = {
+      cars: [],
+      entries: [] // {id,car,date,type,amount,category,note}
+    };
+
+    function load(){
+      try{
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if(raw){ state = JSON.parse(raw); }
+      }catch(e){ console.error(e); }
+    }
+    function save(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+
+    // ====== عناصر DOM ======
+    const carsList = document.getElementById('carsList');
+    const carSelect = document.getElementById('carSelect');
+    const filterCar = document.getElementById('filterCar');
+    const filterDate = document.getElementById('filterDate');
+    const entriesContainer = document.getElementById('entriesContainer');
+    const totalIncome = document.getElementById('totalIncome');
+    const totalExpense = document.getElementById('totalExpense');
+    const netProfit = document.getElementById('netProfit');
+    const carStats = document.getElementById('carStats');
+
+    // chart
+    const ctx = document.getElementById('summaryChart').getContext('2d');
+    let summaryChart = new Chart(ctx, {
+      type:'bar',
+      data:{labels:['إيرادات','مصروفات'],datasets:[{label:'المبلغ',data:[0,0]}]},
+      options:{responsive:true,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true}}}
+    });
+
+    // ====== وظائف العرض ======
+    function renderCars(){
+      carsList.innerHTML='';
+      carSelect.innerHTML='';
+      filterCar.innerHTML = '<option value="all">كل السيارات</option>';
+      state.cars.forEach((c,idx)=>{
+        const div = document.createElement('div'); div.className='car';
+        div.innerHTML = `<div style="display:flex;flex-direction:column;gap:4px"><strong>${c}</strong><span class='small'>#${idx+1}</span></div><div style='display:flex;gap:6px'><button class='btn-outline' data-index='${idx}' data-action='rename'>اسم</button><button class='btn-outline' data-index='${idx}' data-action='remove'>حذف</button></div>`;
+        carsList.appendChild(div);
+        const opt = document.createElement('option'); opt.value=c; opt.textContent=c; carSelect.appendChild(opt);
+        const fopt = document.createElement('option'); fopt.value=c; fopt.textContent=c; filterCar.appendChild(fopt);
+      });
+    }
+
+    function renderEntries(filter={car:'all',date:''}){
+      const entries = state.entries.slice().sort((a,b)=> new Date(b.date) - new Date(a.date));
+      const filtered = entries.filter(e=> (filter.car==='all' || e.car===filter.car) && (!filter.date || e.date===filter.date));
+      entriesContainer.innerHTML='';
+      if(filtered.length===0) entriesContainer.innerHTML = '<div class="small">لا توجد مداخل</div>';
+      filtered.forEach(e=>{
+        const wrap = document.createElement('div'); wrap.style.display='flex'; wrap.style.justifyContent='space-between'; wrap.style.alignItems='center'; wrap.style.padding='8px 6px';
+        wrap.innerHTML = `<div style='text-align:right'><div><strong>${e.car}</strong> <span class='small'>${e.date}</span></div><div class='small'>${e.category || ''} · ${e.note || ''}</div></div><div style='text-align:left'><div style='font-weight:700'>${Number(e.amount).toLocaleString()} أوقية</div><div class='small'>${e.type==='income'?'<span class="tag">إيراد</span>':'<span class="tag">مصروف</span>'} <button class='btn-outline' data-id='${e.id}' data-action='del'>حذف</button></div></div>`;
+        entriesContainer.appendChild(wrap);
+      });
+    }
+
+    function calculateTotals(filter={car:'all',date:''}){
+      const entries = state.entries.filter(e=> (filter.car==='all' || e.car===filter.car) && (!filter.date || e.date===filter.date));
+      const income = entries.filter(e=>e.type==='income').reduce((s,e)=>s+Number(e.amount),0);
+      const expense = entries.filter(e=>e.type==='expense').reduce((s,e)=>s+Number(e.amount),0);
+      totalIncome.textContent = income.toLocaleString() + ' أوقية';
+      totalExpense.textContent = expense.toLocaleString() + ' أوقية';
+      netProfit.textContent = (income-expense).toLocaleString() + ' أوقية';
+      // update chart
+      summaryChart.data.datasets[0].data = [income,expense];
+      summaryChart.update();
+      // car stats
+      renderCarStats(filter.car, entries);
+    }
+
+    function renderCarStats(selectedCar, entries){
+      if(selectedCar && selectedCar!=='all'){
+        const carEntries = state.entries.filter(e=>e.car===selectedCar);
+        if(carEntries.length===0){ carStats.innerHTML = '<div class="small">لا توجد مداخل للسيارة المختارة.</div>'; return; }
+        const inc = carEntries.filter(e=>e.type==='income').reduce((s,e)=>s+Number(e.amount),0);
+        const exp = carEntries.filter(e=>e.type==='expense').reduce((s,e)=>s+Number(e.amount),0);
+        carStats.innerHTML = `<div style='font-weight:700;font-size:18px'>${selectedCar}</div><div class='small' style='margin-top:8px'>إجمالي الإيرادات: ${inc.toLocaleString()} أوقية</div><div class='small'>إجمالي المصروفات: ${exp.toLocaleString()} أوقية</div><div class='small' style='margin-top:6px'>آخر إدخال: ${carEntries.slice().sort((a,b)=>new Date(b.date)-new Date(a.date))[0].date}</div>`;
+      } else {
+        carStats.innerHTML = '<div class="small">اختر سيارة من القائمة أو من الفلتر لعرض الإحصاءات.</div>';
+      }
+    }
+
+    // ====== أحداث وأفعال ======
+    document.getElementById('addCarBtn').addEventListener('click', ()=>{
+      const v = document.getElementById('newCarInput').value.trim(); if(!v) return alert('اكتب اسم أو رقم السيارة');
+      if(state.cars.includes(v)) return alert('السيارة موجودة مسبقاً');
+      state.cars.push(v); save(); renderCars(); document.getElementById('newCarInput').value='';
+    });
+
+    carsList.addEventListener('click',(ev)=>{
+      const btn = ev.target.closest('button'); if(!btn) return;
+      const idx = Number(btn.dataset.index);
+      const action = btn.dataset.action;
+      if(action==='remove'){ if(!confirm('حذف السيارة سيحذف كل المداخل المتعلقة بها. استمر؟')) return; const name = state.cars[idx]; state.cars.splice(idx,1); state.entries = state.entries.filter(e=>e.car!==name); save(); renderAll(); }
+      if(action==='rename'){ const name = prompt('اكتب الاسم الجديد للسيارة', state.cars[idx]); if(name){ const old = state.cars[idx]; state.cars[idx]=name; state.entries.forEach(e=>{ if(e.car===old) e.car = name }); save(); renderAll(); } }
+    });
+
+    document.getElementById('entryForm').addEventListener('submit',(e)=>{
+      e.preventDefault();
+      const car = carSelect.value; const date = document.getElementById('entryDate').value; const type = document.getElementById('typeSelect').value; const amount = document.getElementById('amountInput').value; const category = document.getElementById('categoryInput').value; const note = document.getElementById('noteInput').value;
+      if(!car || !date || !amount) return alert('اكمل الحقول المطلوبة');
+      state.entries.push({id:Date.now().toString(36),car,date,type,amount:parseFloat(amount),category,note});
+      save(); renderAll(); e.target.reset();
+    });
+
+    entriesContainer.addEventListener('click',(ev)=>{
+      const btn = ev.target.closest('button'); if(!btn) return; if(btn.dataset.action==='del'){ const id = btn.dataset.id; if(confirm('حذف هذا الإدخال؟')){ state.entries = state.entries.filter(en=>en.id!==id); save(); renderAll(); } }
+    });
+
+    filterCar.addEventListener('change',()=>{ const c = filterCar.value; const d = filterDate.value; renderEntries({car:c,date:d}); calculateTotals({car:c,date:d}); });
+    filterDate.addEventListener('change',()=>{ const c = filterCar.value; const d = filterDate.value; renderEntries({car:c,date:d}); calculateTotals({car:c,date:d}); });
+
+    document.getElementById('exportCsvBtn').addEventListener('click',()=>{
+      const rows = [['id','car','date','type','amount','category','note']];
+      state.entries.forEach(e=> rows.push([e.id,e.car,e.date,e.type,e.amount,e.category||'',e.note||'']));
+      const csv = rows.map(r=>r.map(cell=>`"${String(cell).replace(/"/g,'""')}"`).join(',')).join('\n');
+      const blob = new Blob([csv],{type:'text/csv;charset=utf-8;'}); const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href=url; a.download = 'car_entries.csv'; a.click(); URL.revokeObjectURL(url);
+    });
+
+    document.getElementById('resetBtn').addEventListener('click',()=>{ if(confirm('هل تريد مسح كل البيانات؟')){ state={cars:[],entries:[]}; save(); renderAll(); } });
+
+    document.getElementById('addSample').addEventListener('click',()=>{
+      if(state.cars.length===0){ state.cars.push('سيارة-1'); state.cars.push('سيارة-2'); }
+      state.entries.push({id:Date.now().toString(36)+'a',car:state.cars[0],date:new Date().toISOString().slice(0,10),type:'income',amount:1200,category:'إيجار',note:'إيجار يومي'});
+      state.entries.push({id:Date.now().toString(36)+'b',car:state.cars[1],date:new Date().toISOString().slice(0,10),type:'expense',amount:200,category:'وقود',note:'بنزين'});
+      save(); renderAll();
+    });
+
+    document.getElementById('showLast7').addEventListener('click',()=>{ const to = new Date(); const from = new Date(); from.setDate(to.getDate()-6); const dates = []; for(let d=from; d<=to; d.setDate(d.getDate()+1)) dates.push(new Date(d).toISOString().slice(0,10)); const filterDates = state.entries.filter(e=>dates.includes(e.date)); const income=filterDates.filter(e=>e.type==='income').reduce((s,e)=>s+Number(e.amount),0); const expense=filterDates.filter(e=>e.type==='expense').reduce((s,e)=>s+Number(e.amount),0); summaryChart.data.datasets[0].data=[income,expense]; summaryChart.update(); alert('عرض للأسبوع الأخير — إجمالي الإيرادات: '+income+' — المصروفات: '+expense);
+    });
+    document.getElementById('showLast30').addEventListener('click',()=>{ const to = new Date(); const from = new Date(); from.setDate(to.getDate()-29); const dates = []; for(let d=from; d<=to; d.setDate(d.getDate()+1)) dates.push(new Date(d).toISOString().slice(0,10)); const filterDates = state.entries.filter(e=>dates.includes(e.date)); const income=filterDates.filter(e=>e.type==='income').reduce((s,e)=>s+Number(e.amount),0); const expense=filterDates.filter(e=>e.type==='expense').reduce((s,e)=>s+Number(e.amount),0); summaryChart.data.datasets[0].data=[income,expense]; summaryChart.update(); alert('عرض لآخر 30 يوم — إجمالي الإيرادات: '+income+' — المصروفات: '+expense);
+    });
+
+    // ====== أدوات مساعدة ======
+    function renderAll(){ renderCars(); renderEntries({car:filterCar.value||'all',date:filterDate.value||''}); calculateTotals({car:filterCar.value||'all',date:filterDate.value||''}); }
+
+    // load initial
+    load(); renderAll();
+  </script>
+</body>
+</html>

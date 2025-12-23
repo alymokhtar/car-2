@@ -1,0 +1,996 @@
+<!doctype html>
+<html lang="en" dir="ltr" id="htmlRoot">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="description" content="Car Rental PRO - Professional car rental management dashboard with Firebase" />
+  <title>Car Rental PRO — Dashboard (Firebase + Auth)</title>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+
+
+  <!-- Font Awesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  <!-- PDF Export Libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+
+  <style>
+    :root{
+      --bg:#f4f6fb; --sidebar:#0f1724; --accent:#06b6d4; --muted:#6b7280;
+      --card:#ffffff; --danger:#ef4444; --success:#10b981; --text:#0b1220;
+      --shadow-sm: 0 2px 4px rgba(0,0,0,0.04);
+      --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+      --shadow-lg: 0 8px 24px rgba(0,0,0,0.12);
+      --shadow-xl: 0 12px 32px rgba(0,0,0,0.16);
+      --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      --transition-fast: all 0.15s ease;
+    }
+    
+    *{box-sizing:border-box;font-family:'Inter',system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;}
+    body{margin:0;background:var(--bg);color:var(--text);min-height:100vh;transition:var(--transition)}
+    
+    /* Smooth scrolling */
+    html{scroll-behavior:smooth}
+    
+    .app{display:flex;height:100vh;overflow:hidden}
+    
+    /* Hamburger Menu Button */
+    .btn-menu{
+      display:none;
+      background:transparent;
+      border:none;
+      color:var(--text);
+      font-size:24px;
+      cursor:pointer;
+      padding:8px;
+      border-radius:8px;
+      transition:var(--transition-fast);
+      align-items:center;
+      justify-content:center;
+      min-width:40px;
+      min-height:40px;
+    }
+    .btn-menu:hover{
+      background:rgba(6,182,212,0.1);
+    }
+    .btn-menu:active{
+      transform:scale(0.95);
+    }
+    
+    /* Mobile Overlay */
+    .mobile-overlay{
+      display:none;
+      position:fixed;
+      inset:0;
+      background:rgba(0,0,0,0.5);
+      z-index:998;
+      opacity:0;
+      transition:opacity 0.3s ease;
+      backdrop-filter:blur(2px);
+      pointer-events:none;
+    }
+    .mobile-overlay.active{
+      opacity:1;
+      pointer-events:auto;
+    }
+    
+    /* Sidebar with enhanced styling */
+    .sidebar{
+      width:300px;
+      background:linear-gradient(180deg,var(--sidebar),#0b1220);
+      color:#fff;
+      padding:24px;
+      display:flex;
+      flex-direction:column;
+      gap:12px;
+      box-shadow:var(--shadow-xl);
+      position:relative;
+      z-index:10;
+      transition:transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    
+    .logo{
+      font-weight:800;
+      font-size:20px;
+      display:flex;
+      align-items:center;
+      gap:12px;
+      padding:8px 0;
+      transition:var(--transition-fast);
+    }
+    
+    .badge{
+      background:linear-gradient(135deg,var(--accent),#7c3aed);
+      color:#fff;
+      padding:8px 12px;
+      border-radius:10px;
+      font-weight:700;
+      font-size:14px;
+      box-shadow:0 4px 12px rgba(6,182,212,0.3);
+      transition:var(--transition-fast);
+    }
+    
+    .badge:hover{transform:scale(1.05);box-shadow:0 6px 16px rgba(6,182,212,0.4)}
+    
+    .small{color:#9aa4b2;font-size:13px;line-height:1.5}
+    
+    .nav{
+      margin-top:10px;
+      display:flex;
+      flex-direction:column;
+      gap:4px;
+    }
+    
+    .nav button{
+      background:transparent;
+      border:none;
+      color:#dbeafe;
+      padding:12px 16px;
+      text-align:right;
+      border-radius:12px;
+      font-weight:600;
+      cursor:pointer;
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      direction:rtl;
+      transition:var(--transition-fast);
+      position:relative;
+      overflow:hidden;
+      width:100%;
+    }
+    
+    .nav button span{
+      display:flex;
+      align-items:center;
+      gap:10px;
+    }
+    
+    .nav button::before{
+      content:'';
+      position:absolute;
+      left:0;
+      top:0;
+      height:100%;
+      width:3px;
+      background:var(--accent);
+      transform:scaleY(0);
+      transition:var(--transition-fast);
+    }
+    
+    .nav button:hover{
+      background:rgba(255,255,255,0.08);
+      transform:translateX(-4px);
+      color:#fff;
+    }
+    
+    .nav button:hover::before{transform:scaleY(1)}
+    
+    .nav button.active{
+      background:rgba(255,255,255,0.12);
+      color:#fff;
+      box-shadow:0 4px 12px rgba(0,0,0,0.1);
+    }
+    
+    .nav button.active::before{transform:scaleY(1)}
+    
+    .main{
+      flex:1;
+      padding:28px;
+      overflow:auto;
+      background:linear-gradient(135deg,#f4f6fb 0%,#e8ecf1 100%);
+    }
+    
+    .topbar{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:12px;
+      margin-bottom:24px;
+      padding:16px 0;
+    }
+    
+    .topbar h1{
+      font-size:28px;
+      font-weight:800;
+      background:linear-gradient(135deg,var(--accent),#6d28d9);
+      -webkit-background-clip:text;
+      -webkit-text-fill-color:transparent;
+      background-clip:text;
+    }
+    
+    .controls{
+      display:flex;
+      gap:10px;
+      align-items:center;
+      flex-wrap:wrap;
+    }
+    
+    /* Enhanced Buttons */
+    .btn{
+      background:linear-gradient(135deg,var(--accent),#6d28d9);
+      border:none;
+      color:#fff;
+      padding:10px 18px;
+      border-radius:10px;
+      cursor:pointer;
+      font-weight:600;
+      font-size:14px;
+      transition:var(--transition);
+      box-shadow:0 4px 12px rgba(6,182,212,0.25);
+      position:relative;
+      overflow:hidden;
+    }
+    
+    .btn::before{
+      content:'';
+      position:absolute;
+      top:50%;
+      left:50%;
+      width:0;
+      height:0;
+      border-radius:50%;
+      background:rgba(255,255,255,0.2);
+      transform:translate(-50%,-50%);
+      transition:width 0.6s,height 0.6s;
+    }
+    
+    .btn:hover::before{
+      width:300px;
+      height:300px;
+    }
+    
+    .btn:hover{
+      transform:translateY(-2px);
+      box-shadow:0 6px 20px rgba(6,182,212,0.35);
+    }
+    
+    .btn:active{
+      transform:translateY(0);
+    }
+    
+    .btn.ghost{
+      background:transparent;
+      border:1.5px solid rgba(107,114,128,0.2);
+      color:var(--accent);
+      box-shadow:none;
+    }
+    
+    .btn.ghost:hover{
+      background:rgba(6,182,212,0.08);
+      border-color:var(--accent);
+      color:var(--accent);
+    }
+    .btn.ghist #btnlogin{
+      color:var(--accent) !important;
+    }
+    /* Enhanced Cards */
+    .card{
+      background:var(--card);
+      border-radius:16px;
+      padding:20px;
+      box-shadow:var(--shadow-md);
+      margin-bottom:20px;
+      transition:var(--transition);
+      border:1px solid rgba(0,0,0,0.04);
+      position:relative;
+      overflow:visible;
+    }
+    
+    .card::before{
+      content:'';
+      position:absolute;
+      top:0;
+      left:0;
+      right:0;
+      height:3px;
+      background:linear-gradient(90deg,var(--accent),#6d28d9);
+      transform:scaleX(0);
+      transition:var(--transition);
+    }
+    
+    .card:hover{
+      box-shadow:var(--shadow-lg);
+      transform:translateY(-2px);
+    }
+    
+    .card:hover::before{transform:scaleX(1)}
+    
+    .stat-box{
+      background:linear-gradient(135deg,#fff 0%,#f8fafc 100%);
+      border-left:4px solid var(--accent);
+    }
+    
+    .stat-box:nth-child(2){border-left-color:var(--success)}
+    .stat-box:nth-child(3){border-left-color:#f59e0b}
+    
+    .grid3{
+      display:grid;
+      grid-template-columns:repeat(3,1fr);
+      gap:20px;
+    }
+    
+    .stat-title{
+      font-size:13px;
+      color:var(--muted);
+      font-weight:500;
+      text-transform:uppercase;
+      letter-spacing:0.5px;
+    }
+    
+    .stat-value{
+      font-size:28px;
+      font-weight:800;
+      margin-top:8px;
+      background:linear-gradient(135deg,var(--accent),#6d28d9);
+      -webkit-background-clip:text;
+      -webkit-text-fill-color:transparent;
+      background-clip:text;
+    }
+    
+    /* Enhanced Tables */
+    table{
+      width:100%;
+      border-collapse:separate;
+      border-spacing:0;
+      background:var(--card);
+      border-radius:12px;
+      overflow:hidden;
+      box-shadow:var(--shadow-sm);
+    }
+
+   /* thead{
+      background:linear-gradient(135deg,#f8fafc,#f1f5f9);*/
+   /* }*/
+    
+    th{
+      padding:14px 12px;
+      border-bottom:2px solid #e2e8f0;
+      text-align:center;
+      font-size:13px;
+      font-weight:700;
+      color:var(--text);
+      text-transform:uppercase;
+      letter-spacing:0.5px;
+    }
+    
+    td{
+      padding:14px 12px;
+      border-bottom:1px solid #f1f5f9;
+      text-align:center;
+      font-size:14px;
+      transition:var(--transition-fast);
+    }
+    
+    tbody tr{
+      transition:var(--transition-fast);
+    }
+    
+    tbody tr:hover{
+      background:rgba(6,182,212,0.04);
+      transform:scale(1.01);
+    }
+    
+    tbody tr:nth-child(even){
+      background:rgba(0,0,0,0.02);
+    }
+    
+    tbody tr:nth-child(even):hover{
+      background:rgba(6,182,212,0.06);
+    }
+    
+    /* Enhanced Inputs */
+    input,select,textarea{
+      padding:12px 14px;
+      border-radius:10px;
+      border:1.5px solid #e2e8f0;
+      background:#fff;
+      width:100%;
+      font-size:14px;
+      transition:var(--transition-fast);
+      font-family:inherit;
+      -webkit-appearance:none;
+      -moz-appearance:none;
+      appearance:none;
+      pointer-events:auto;
+      touch-action:manipulation;
+      position:relative;
+      z-index:10;
+    }
+    
+    /* Fix select dropdowns on mobile */
+    select{
+      cursor:pointer;
+      -webkit-tap-highlight-color:rgba(6,182,212,0.3);
+    }
+    
+    select:focus{
+      z-index:1000;
+    }
+    
+    /* Ensure select options are clickable */
+    select option{
+      padding:12px;
+      background:#fff;
+      color:var(--text);
+    }
+    
+    input:focus,select:focus,textarea:focus{
+      outline:none;
+      border-color:var(--accent);
+      box-shadow:0 0 0 3px rgba(6,182,212,0.1);
+      transform:translateY(-1px);
+    }
+    
+    input:hover,select:hover,textarea:hover{
+      border-color:#cbd5e1;
+    }
+    
+    .row{
+      display:flex;
+      gap:12px;
+      flex-wrap:wrap;
+    }
+    
+    .row .col{
+      flex:1;
+      min-width:200px;
+    }
+    
+    /* Enhanced Tags */
+    .tag{
+      padding:6px 12px;
+      border-radius:20px;
+      font-weight:600;
+      text-align:center;
+      font-size:12px;
+      display:inline-block;
+      transition:var(--transition-fast);
+    }
+    
+    .tag.in{
+      background:linear-gradient(135deg,var(--success),#059669);
+      color:#fff;
+      box-shadow:0 2px 8px rgba(16,185,129,0.3);
+    }
+    
+    .tag.out{
+      background:linear-gradient(135deg,var(--danger),#dc2626);
+      color:#fff;
+      box-shadow:0 2px 8px rgba(239,68,68,0.3);
+    }
+    
+    .muted{color:var(--muted)}
+    
+    /* Modal Enhancements */
+    #modalLogin{
+      backdrop-filter:blur(8px);
+      animation:fadeIn 0.3s ease;
+    }
+    
+    #modalLogin > div{
+      animation:slideUp 0.3s ease;
+      box-shadow:var(--shadow-xl);
+      border:1px solid rgba(255,255,255,0.1);
+    }
+    
+    @keyframes fadeIn{
+      from{opacity:0}
+      to{opacity:1}
+    }
+    
+    @keyframes slideUp{
+      from{
+        opacity:0;
+        transform:translateY(20px);
+      }
+      to{
+        opacity:1;
+        transform:translateY(0);
+      }
+    }
+    
+    /* Toast Notification Container */
+    .toast-container{
+      position:fixed;
+      top:20px;
+      right:20px;
+      z-index:9999;
+      display:flex;
+      flex-direction:column;
+      gap:12px;
+    }
+    
+    .toast{
+      background:#fff;
+      padding:16px 20px;
+      border-radius:12px;
+      box-shadow:var(--shadow-lg);
+      border-left:4px solid var(--accent);
+      min-width:300px;
+      animation:slideInRight 0.3s ease;
+      display:flex;
+      align-items:center;
+      gap:12px;
+    }
+    
+    .toast.success{border-left-color:var(--success)}
+    .toast.error{border-left-color:var(--danger)}
+    .toast.warning{border-left-color:#f59e0b}
+    
+    @keyframes slideInRight{
+      from{
+        opacity:0;
+        transform:translateX(100%);
+      }
+      to{
+        opacity:1;
+        transform:translateX(0);
+      }
+    }
+    
+    /* Loading Spinner */
+    .spinner{
+      border:3px solid rgba(6,182,212,0.1);
+      border-top:3px solid var(--accent);
+      border-radius:50%;
+      width:24px;
+      height:24px;
+      animation:spin 0.8s linear infinite;
+      display:inline-block;
+    }
+    
+    @keyframes spin{
+      0%{transform:rotate(0deg)}
+      100%{transform:rotate(360deg)}
+    }
+    
+    /* Responsive Design */
+    @media(max-width:1200px){
+      .grid3{grid-template-columns:repeat(2,1fr)}
+    }
+    
+    @media(max-width:980px){
+      .grid3{grid-template-columns:1fr}
+      .btn-menu{display:block}
+      .sidebar{
+        position:fixed;
+        left:0;
+        top:0;
+        height:100vh;
+        z-index:999;
+        transform:translateX(-100%);
+        width:280px;
+      }
+      .sidebar.mobile-open{
+        transform:translateX(0);
+      }
+      .mobile-overlay{display:block}
+      .main{
+        padding:16px;
+        width:100%;
+        overflow:visible;
+        min-height:auto;
+        position:relative;
+        z-index:1;
+      }
+      .app{
+        overflow:visible;
+        min-height:100vh;
+        height:auto;
+      }
+      body{
+        overflow-x:hidden;
+        overflow-y:auto;
+      }
+      .topbar h1{font-size:20px}
+      .topbar{flex-wrap:wrap}
+      .controls{flex-wrap:wrap;gap:8px}
+      .controls button{font-size:12px;padding:8px 12px}
+      .controls label{font-size:11px}
+      /* Fix inputs on mobile - CRITICAL */
+      input,select,textarea{
+        font-size:16px !important;
+        padding:14px !important;
+        pointer-events:auto !important;
+        touch-action:manipulation !important;
+        z-index:100 !important;
+        position:relative !important;
+        -webkit-user-select:text !important;
+        user-select:text !important;
+        background-color:#fff !important;
+        -webkit-tap-highlight-color:rgba(6,182,212,0.3) !important;
+        cursor:pointer !important;
+      }
+      input:focus,select:focus,textarea:focus{
+        z-index:1001 !important;
+        border-color:var(--accent) !important;
+      }
+      /* Critical fix for select dropdowns on mobile */
+      select{
+        z-index:100 !important;
+        -webkit-appearance:menulist !important;
+        -moz-appearance:menulist !important;
+        appearance:menulist !important;
+      }
+      select:active,select:focus{
+        z-index:1001 !important;
+        position:relative !important;
+      }
+      /* Ensure select dropdowns work on mobile */
+      .main select, .card select{
+        position:relative;
+        z-index:1000;
+      }
+      .main select:focus, .card select:focus{
+        z-index:1002;
+      }
+    }
+    
+    @media(max-width:640px){
+      .row{flex-direction:column}
+      .row .col{min-width:100%}
+      .controls{flex-direction:column;align-items:stretch;width:100%}
+      .controls button{width:100%;font-size:14px}
+      .topbar{flex-direction:column;align-items:flex-start;gap:12px}
+      .topbar h1{font-size:18px;line-height:1.3}
+      .sidebar{width:100%;max-width:320px}
+      .card{padding:16px}
+      .stat-value{font-size:24px}
+      .topbar > div:first-child{width:100%}
+      /* Better mobile table display */
+      table{
+        font-size:12px;
+        display:block;
+        overflow-x:auto;
+        -webkit-overflow-scrolling:touch;
+        white-space:nowrap;
+      }
+      table thead,table tbody{
+        width:100%;
+      }
+      th,td{
+        padding:8px 6px;
+        font-size:12px;
+        white-space:nowrap;
+      }
+      /* Stack form inputs on mobile */
+      .row .col input,.row .col select{
+        margin-bottom:8px;
+      }
+      /* Ensure inputs work on small screens */
+      input,select,textarea{
+        font-size:16px !important;
+        padding:16px !important;
+        pointer-events:auto !important;
+        touch-action:manipulation !important;
+        -webkit-tap-highlight-color:rgba(6,182,212,0.3) !important;
+        z-index:1000 !important;
+        cursor:pointer !important;
+      }
+      /* Critical fix for select dropdowns on small mobile screens */
+      select{
+        z-index:1000 !important;
+        -webkit-appearance:menulist !important;
+        -moz-appearance:menulist !important;
+        appearance:menulist !important;
+      }
+      select:active,select:focus{
+        z-index:1002 !important;
+        position:relative !important;
+      }
+      #carsTable{
+        display: block !important;
+      }
+    }
+    
+    .ltr{direction:ltr;}
+    
+    /* Icon spacing */
+    i{margin-right:8px}
+    
+    /* Smooth tab transitions */
+    .tab{
+      animation:fadeIn 0.3s ease;
+    }
+  </style>
+</head>
+<body>
+<!-- Mobile Overlay -->
+<div class="mobile-overlay" id="mobileOverlay"></div>
+
+<div class="app" id="appRoot">
+  <aside class="sidebar" id="sidebar">
+    <div class="logo"><div class="badge">CR</div><div style="line-height:1">Car Rental <span style="color:#94a3b8;font-weight:600">PRO</span></div></div>
+    <div class="small">Welcome, <strong id="uiUser">Guest</strong></div>
+    <nav class="nav" id="nav">
+      <button data-tab="dashboard" class="active"><span><i class="fas fa-chart-line"></i> Dashboard</span></button>
+      <button data-tab="cars"><span><i class="fas fa-car"></i> Cars</span></button>
+      <button data-tab="entries"><span><i class="fas fa-dollar-sign"></i> Entries</span></button>
+      <button data-tab="reports"><span><i class="fas fa-file-alt"></i> Reports</span></button>
+      <button data-tab="backup"><span><i class="fas fa-database"></i> Backup</span></button>
+      <button data-tab="settings"><span><i class="fas fa-cog"></i> Settings</span></button>
+      <button data-tab="users"><span><i class="fas fa-users"></i> Users</span></button>
+    </nav>
+    <div style="margin-top:10px">
+      <button id="btnLogin" class="btn ghost" style="width:100%"><i class="fas fa-sign-in-alt"></i> Login / Switch</button>
+    </div>
+    <div class="controls">
+      <label class="muted" style="font-size:13px"><i class="fas fa-sync-alt"></i> Auto-backup</label>
+      <input type="checkbox" id="autoBackupToggle" />
+      <button id="btnDownloadBackup" class="btn ghost"><i class="fas fa-download"></i> Download Backup</button>
+      <button id="btnImportBackup" class="btn"><i class="fas fa-upload"></i> Import Backup</button>
+      <button id="btnSignOut" class="btn ghost" style="background:transparent;border:1px solid #e2e8f0;color:var(--text)"><i class="fas fa-sign-out-alt"></i> Sign out</button>
+    </div>
+    <div class="foot muted" style="margin-top:auto">BY "ALY MOKHTAR".</div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <div style="display:flex;align-items:center;gap:12px">
+        <button id="btnMenuToggle" class="btn-menu" aria-label="Toggle menu">
+          <i class="fas fa-bars"></i>
+        </button>
+        <h1 style="margin:0">Car Rental PRO — Admin Dashboard</h1>
+      </div>
+      
+    </div>
+
+    <!-- Dashboard -->
+    <section id="tab-dashboard" class="tab">
+      <h2 style="margin:0 0 12px 0;">Dashboard</h2>
+      <div class="grid3" style="margin-bottom:12px">
+        <div class="card stat-box">
+          <div class="stat-title"><i class="fas fa-arrow-up"></i> Total Revenue</div>
+          <div class="stat-value ltr" id="statRevenue">0</div>
+          <div class="small muted">Monthly trend <span style="color:var(--success)">+12%</span></div>
+        </div>
+        <div class="card stat-box">
+          <div class="stat-title"><i class="fas fa-arrow-down"></i> Total Expenses</div>
+          <div class="stat-value ltr" id="statExpenses">0</div>
+          <div class="small muted">Monthly trend <span style="color:var(--danger)">-5%</span></div>
+        </div>
+        <div class="card stat-box">
+          <div class="stat-title"><i class="fas fa-chart-line"></i> Net Profit</div>
+          <div class="stat-value ltr" id="statNet">0</div>
+          <div class="small muted">Monthly trend <span style="color:var(--success)">+7%</span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <h3 style="margin:0">Monthly Chart</h3>
+          <div class="muted">Revenue vs Expenses</div>
+        </div>
+        <canvas id="chartMonthly" height="120" style="margin-top:12px"></canvas>
+      </div>
+    </section>
+
+    <!-- Cars -->
+    <section id="tab-cars" class="tab" style="display:none">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <h3 style="margin:0">Manage Cars</h3>
+          <div class="muted">Add / Edit / Remove cars</div>
+        </div>
+        <div style="margin-top:12px" class="row">
+          <div class="col"><input id="carName" placeholder="Car name / model (e.g. Toyota Corolla 2019)" /></div>
+          <div style="width:120px"><input id="carPlate" placeholder="Plate (optional)" /></div>
+          <div style="width:130px"><input id="carDailyRent" placeholder="Daily rent" type="number" min="0" step="0.01" /></div>
+          <div style="width:120px"><input id="carPrice" placeholder="Car price" type="number" min="0" step="0.01" /></div>
+          <div style="width:120px"><button id="btnAddCar" class="btn"><i class="fas fa-plus"></i> Add Car</button></div>
+        </div>
+        <div style="margin-top:14px">
+          <table id="carsTable"><thead><tr><th>Car</th><th>Plate</th><th>Daily Rent</th><th>Price</th><th>ROI</th><th>Entries</th><th>Actions</th></tr></thead><tbody></tbody></table>
+          <div id="carsEmptyState" style="display:none;text-align:center;padding:40px;color:var(--muted)">
+            <i class="fas fa-car" style="font-size:48px;margin-bottom:16px;opacity:0.3"></i>
+            <p style="font-size:16px;font-weight:600">No cars added yet</p>
+            <p class="muted">Add your first car to get started</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Entries -->
+    <section id="tab-entries" class="tab" style="display:none">
+      <div class="card">
+        <h3 style="margin:0">Add Entry (Income / Expense)</h3>
+        <div class="muted">Record income or expense for any car</div>
+        <div style="margin-top:12px" class="row">
+          <div class="col"><select id="entryCar"><option value="all">Choose car</option></select></div>
+          <div style="width:170px"><input id="entryDate" type="date" /></div>
+          <div style="width:140px"><select id="entryType"><option value="income">Income</option><option value="expense">Expense</option></select></div>
+        </div>
+        <div style="margin-top:10px" class="row">
+          <div class="col"><input id="entryAmount" placeholder="Amount (number)" type="number" step="0.01" /></div>
+          <div class="col"><input id="entryCategory" placeholder="Category (e.g. rent, fuel, maintenance)" /></div>
+          <div style="width:160px"><button id="btnAddEntry" class="btn"><i class="fas fa-save"></i> Save Entry</button></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <h3 style="margin:0">Entries List</h3>
+          <div>
+            <select id="filterCar" style="width:140px"><option value="all">All cars</option></select>
+            <input id="filterFrom" type="date" style="width:140px" />
+            <input id="filterTo" type="date" style="width:140px" />
+            <button id="btnApplyFilter" class="btn ghost"><i class="fas fa-filter"></i> Apply</button>
+            <button id="btnClearFilter" class="btn ghost"><i class="fas fa-times"></i> Clear</button>
+          </div>
+        </div>
+        <div style="margin-top:12px;overflow:auto">
+          <table id="entriesTable"><thead><tr><th>Date</th><th>Car</th><th>Type</th><th>Category</th><th>Amount</th><th>Actions</th></tr></thead><tbody></tbody></table>
+          <div id="entriesEmptyState" style="display:none;text-align:center;padding:40px;color:var(--muted)">
+            <i class="fas fa-dollar-sign" style="font-size:48px;margin-bottom:16px;opacity:0.3"></i>
+            <p style="font-size:16px;font-weight:600">No entries found</p>
+            <p class="muted">Add income or expense entries to track your finances</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Reports -->
+    <section id="tab-reports" class="tab" style="display:none">
+      <div class="card">
+        <h3 style="margin:0">Generate Reports</h3>
+        <div class="muted">Create summary or customized reports and export</div>
+        <div style="margin-top:12px" class="row">
+          <div class="col"><select id="reportCar"><option value="all">All cars</option></select></div>
+          <div style="width:170px"><input id="reportFrom" type="date" /></div>
+          <div style="width:170px"><input id="reportTo" type="date" /></div>
+          <div style="width:130px"><button id="btnGenerate" class="btn"><i class="fas fa-chart-bar"></i> Generate</button></div>
+        </div>
+        <div style="margin-top:12px" id="reportSummary" class="card"><p class="muted">Click "Generate" to show results here.</p></div>
+        <div style="margin-top:8px;display:flex;gap:8px">
+          <button id="btnExportCSVReport" class="btn ghost"><i class="fas fa-file-csv"></i> Export CSV</button>
+          <button id="btnExportXLS" class="btn ghost"><i class="fas fa-file-excel"></i> Export Excel</button>
+          <button id="btnExportPDF" class="btn"><i class="fas fa-file-pdf"></i> Export PDF</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Backup -->
+    <section id="tab-backup" class="tab" style="display:none">
+      <div class="card">
+        <h3>Backup / Restore</h3>
+        <div class="muted">Download JSON backup or restore from file.</div>
+        <div style="margin-top:12px" class="row">
+          <div style="width:160px"><button id="btnDownload" class="btn"><i class="fas fa-download"></i> Download Backup</button></div>
+          <div style="width:160px"><button id="btnUpload" class="btn ghost"><i class="fas fa-upload"></i> Restore Backup</button></div>
+          <div style="width:200px"><button id="btnClearAll" class="btn ghost" style="background:#fee2e2;color:var(--danger)"><i class="fas fa-trash-alt"></i> Reset All Data</button></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Settings -->
+    <section id="tab-settings" class="tab" style="display:none">
+      <div class="card">
+        <h3>Settings</h3>
+        <div class="muted">Currency, language, auto-backup interval, theme</div>
+        <div style="margin-top:12px">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0">
+            <div><div style="font-weight:700">Language</div><div class="muted">English / العربية</div></div>
+            <div style="width:200px"><select id="settingLanguage"><option value="en">English</option><option value="ar">العربية</option></select></div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0">
+            <div><div style="font-weight:700">Currency</div><div class="muted">Display currency (suffix)</div></div>
+            <div style="width:200px"><input id="settingCurrency" value="MRU" /></div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0">
+            <div><div style="font-weight:700">Auto backup interval (minutes)</div><div class="muted">When enabled, this controls autosave frequency</div></div>
+            <div style="width:220px"><input id="settingAutoInterval" type="number" min="1" value="60" /></div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0">
+            <div><div style="font-weight:700">Theme</div><div class="muted">Light / Dark</div></div>
+            <div style="width:160px"><select id="settingTheme"><option value="light">Light</option><option value="dark">Dark</option></select></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Users -->
+    <section id="tab-users" class="tab" style="display:none">
+      <div class="card">
+        <h3>Users & Roles</h3>
+        <div class="muted">Manage app users (Firestore demo collection)</div>
+        <div style="margin-top:12px" class="row">
+          <div class="col"><input id="newUserName" placeholder="Full name" /></div>
+          <div class="col"><input id="newUserEmail" placeholder="Email" /></div>
+          <div style="width:160px"><select id="newUserRole"><option value="admin">admin</option><option value="manager">manager</option><option value="user">user</option></select></div>
+          <div style="width:120px"><button id="btnAddUser" class="btn"><i class="fas fa-user-plus"></i> Add user</button></div>
+        </div>
+        <div style="margin-top:12px">
+          <table id="usersTable"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Actions</th></tr></thead><tbody></tbody></table>
+          <div id="usersEmptyState" style="display:none;text-align:center;padding:40px;color:var(--muted)">
+            <i class="fas fa-users" style="font-size:48px;margin-bottom:16px;opacity:0.3"></i>
+            <p style="font-size:16px;font-weight:600">No users added yet</p>
+            <p class="muted">Add users to manage access and permissions</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- Login modal -->
+<div id="modalLogin" style="display:none;position:fixed;inset:0;background:rgba(2,6,23,0.5);align-items:center;justify-content:center;z-index:50">
+  <div style="background:#fff;padding:18px;border-radius:12px;width:420px; text-align: right;">
+    <h3 style="margin:0 0 8px 0">Login (Firebase)</h3>
+    <div class="small">Create a user in Firebase Console → Authentication → Add user (eg. admin@demo / 123456)</div>
+    <div style="margin-top:12px" class="row">
+      <div class="col"><input id="loginEmail" placeholder="Email" value="admin@demo" /></div>
+      <div style="width:160px"><input id="loginPass" placeholder="Password" value="123456" /></div>
+    </div>
+    <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">
+      <button id="btnDoLogin" class="btn"><i class="fas fa-sign-in-alt"></i> Login</button>
+      <button id="btnCloseLogin" class="btn ghost"><i class="fas fa-times"></i> Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast Notification Container -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- Firebase modular SDK (ES module) + app code -->
+<script type="module" src="./src/app.js"></script>
+
+<!-- Toast Notification Helper -->
+<script>
+  function showToast(message, type = 'info') {
+    const container = document.getElementById('toastContainer');
+    if (!container) return;
+    
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    
+    const icons = {
+      success: '<i class="fas fa-check-circle" style="color:var(--success);font-size:20px"></i>',
+      error: '<i class="fas fa-exclamation-circle" style="color:var(--danger);font-size:20px"></i>',
+      warning: '<i class="fas fa-exclamation-triangle" style="color:#f59e0b;font-size:20px"></i>',
+      info: '<i class="fas fa-info-circle" style="color:var(--accent);font-size:20px"></i>'
+    };
+    
+    toast.innerHTML = `${icons[type] || icons.info} <span>${message}</span>`;
+    container.appendChild(toast);
+    
+    setTimeout(() => {
+      toast.style.animation = 'slideInRight 0.3s ease reverse';
+      setTimeout(() => toast.remove(), 300);
+    }, 3000);
+  }
+  
+  // Make toast function globally available
+  window.showToast = showToast;
+</script>
+</body>
+</html>
+<!--
+  @author: Aly Mokhtar
+  @version: 1.0.0
+  @description: Car Rental PRO - Admin Dashboard
+  @date: 2025-12-14
+  @time: 10:00:00
+  @copyright: Aly Mokhtar
+  @license: MIT
+  @contact: alymokhtar2003@gmail.com
+  @website: https://alymokhtar.com
+  @github: https://github.com/alymokhtar
+  @linkedin: https://linkedin.com/in/alymokhtar
+
+
+  git add .
+  git commit -m "Move changes from dist to source files"
+  git push
+  npm run build
+  firebase deploy
+  -->

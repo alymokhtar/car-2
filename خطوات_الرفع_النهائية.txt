@@ -1,0 +1,70 @@
+═══════════════════════════════════════════════════════════════
+  🚀 خطوات رفع المشروع على GitHub - دليل نهائي
+═══════════════════════════════════════════════════════════════
+
+الطريقة الأسهل (موصى بها):
+─────────────────────────────
+
+1. حمّل GitHub Desktop من: https://desktop.github.com
+2. ثبت البرنامج وسجل الدخول بحساب GitHub
+3. افتح GitHub Desktop
+4. File → Add Local Repository
+5. اختر المجلد: c:\Users\EL-Baron\OneDrive\ALNAQEL\programing\cars
+6. إذا طلب منك إنشاء repository، انقر "Create a repository"
+7. أدخل:
+   - Name: car-rental-pro (أو أي اسم تريده)
+   - Description: Professional car rental dashboard
+8. انقر "Publish repository"
+9. اختر Public أو Private
+10. انقر "Publish repository"
+
+✅ انتهى! المشروع الآن على GitHub
+
+═══════════════════════════════════════════════════════════════
+
+الطريقة التقليدية (بعد تثبيت Git):
+─────────────────────────────────────
+
+1. حمّل Git من: https://git-scm.com/download/win
+2. ثبت Git مع الإعدادات الافتراضية
+3. أعد تشغيل PowerShell
+4. افتح PowerShell في مجلد المشروع
+5. قم بتشغيل الأوامر التالية:
+
+   git init
+   git add .
+   git commit -m "Initial commit: Car Rental PRO Dashboard"
+   
+6. أنشئ مستودع جديد على GitHub:
+   - اذهب إلى: https://github.com/new
+   - أدخل اسم المستودع
+   - لا تضع علامة على "Initialize with README"
+   - انقر "Create repository"
+   
+7. قم بتشغيل:
+   git remote add origin https://github.com/YOUR_USERNAME/REPO_NAME.git
+   git branch -M main
+   git push -u origin main
+
+═══════════════════════════════════════════════════════════════
+
+ملاحظات مهمة:
+──────────────
+
+✅ الملفات التي سيتم رفعها:
+   - جميع ملفات src/
+   - index.html
+   - package.json
+   - firebase.json
+   - firestore.rules
+   - جميع ملفات التوثيق
+
+❌ الملفات المحمية (لن يتم رفعها):
+   - node_modules/
+   - dist/
+   - .env
+   - .firebase/
+   - *.txt
+
+═══════════════════════════════════════════════════════════════
+
