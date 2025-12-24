@@ -46,7 +46,7 @@ function downloadFile(filename, contentType, content){ const a=document.createEl
 // ---------- Attach / detach realtime listeners AFTER auth ----------
 function attachRealtimeListeners(){
   // detach first if any
-  detachRealtimeListeners();
+  detachRealtimeListeners()};
 
   // cars
   const carsCol = collection(db,'cars');
@@ -69,25 +69,35 @@ function attachRealtimeListeners(){
     renderUsers();
   }, err => { console.error('users snapshot error', err); });
 
-  // load settings doc once
-  (async function loadSettings(){
-    try {
-      const sRef = doc(db,'meta','settings');
-      const sDoc = await getDoc(sRef);
-      if(sDoc && sDoc.exists()){
-        settingsCache = {...settingsCache, ...sDoc.data()};
-      } else {
-        await setDoc(sRef, settingsCache);
-      }
-      l('settingCurrency').value = settingsCache.currency || 'MRU';
-      l('settingTheme').value = settingsCache.theme || 'light';
-      applyTheme(settingsCache.theme || 'light');
-      setupAutoBackup();
-    } catch(err){
-      console.error('load settings error', err);
+// load settings doc once
+(async function loadSettings(){
+  try {
+    const sRef = doc(db,'meta','settings');
+    const sDoc = await getDoc(sRef);
+
+    if (sDoc && sDoc.exists()) {
+      settingsCache = { ...settingsCache, ...sDoc.data() };
+    } else {
+      await setDoc(sRef, settingsCache);
     }
-  })();
-}
+
+    const currencyEl = l('settingCurrency');
+    if (currencyEl) {
+      currencyEl.value = settingsCache.currency || 'MRU';
+    }
+
+    const themeEl = l('settingTheme');
+    if (themeEl) {
+      themeEl.value = settingsCache.theme || 'light';
+    }
+
+    applyTheme(settingsCache.theme || 'light');
+
+  } catch (err) {
+    console.error('load settings error', err);
+  }
+})();
+
 
 function detachRealtimeListeners(){
   if(typeof unsubCars === 'function'){ try{ unsubCars(); }catch(err){ console.error('unsubCars error',err); } unsubCars = null; }
@@ -514,11 +524,14 @@ l('btnClearAll').addEventListener('click', async ()=> {
 });
 
 // settings handlers
-l('settingLanguage').addEventListener('change', (e) => {
-  setLanguage(e.target.value);
-  info(`Language changed to: ${e.target.value}`);
-  if(window.showToast) window.showToast(`Language changed to ${e.target.value}`, 'success');
-});
+const settingLanguage = N("settingLanguage");
+if (settingLanguage) {
+  settingLanguage.addEventListener("change", (e) => {
+    setLanguage(e.target.value);
+    info(`Language changed to: ${e.target.value}`);
+    if(window.showToast) window.showToast(`Language changed to ${e.target.value}`, 'success');
+  });
+}
 
 l('settingCurrency').addEventListener('change', async ()=>{
   settingsCache.currency = l('settingCurrency').value.trim() || 'MRU';
