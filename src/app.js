@@ -1,8 +1,8 @@
 // ---------- Firebase imports ----------
-import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
+import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
 import {
   getFirestore, collection, doc, addDoc, setDoc, getDoc, getDocs,
-  onSnapshot, updateDoc, deleteDoc
+  onSnapshot, updateDoc, deleteDoc, query, where
 } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
 import {
   getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged
@@ -10,7 +10,7 @@ import {
 
 // ---------- Local imports ----------
 import { initLanguage, setLanguage } from "./i18n.js";
-import { info, error, warn } from "./logger.js";
+import { info } from "./logger.js";
 
 // ---------- Your Firebase config ----------
 const firebaseConfig = {
@@ -23,7 +23,7 @@ const firebaseConfig = {
 };
 
 // ---------- Init app, auth, db ----------
-const app = initializeApp(firebaseConfig);
+const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 const auth = getAuth(app);
 const db = getFirestore(app);
 
@@ -44,30 +44,49 @@ function escapeHtml(str){ if(typeof str !== 'string') return str; return str.rep
 function downloadFile(filename, contentType, content){ const a=document.createElement('a'); const blob=new Blob([content],{type:contentType}); a.href=URL.createObjectURL(blob); a.download=filename; document.body.appendChild(a); a.click(); document.body.removeChild(a); }
 
 // ---------- Attach / detach realtime listeners AFTER auth ----------
-function attachRealtimeListeners(){
+function attachRealtimeListeners() {
   // detach first if any
-  detachRealtimeListeners()};
+  detachRealtimeListeners();  // ✅ إصلاح: حذف الـ } الزائدة هنا
 
   // cars
-  const carsCol = collection(db,'cars');
+  const carsCol = collection(db, 'cars');
   unsubCars = onSnapshot(carsCol, snap => {
-    carsCache = []; snap.forEach(d => carsCache.push({ id:d.id, ...d.data() }));
-    renderCarsTable(); populateCarSelects(); updateDashboard();
-  }, err => { console.error('cars snapshot error', err); });
+    carsCache = [];
+    snap.forEach(d => carsCache.push({ id: d.id, ...d.data() }));
+    renderCarsTable();
+    populateCarSelects();
+    updateDashboard();
+    console.log('Cars loaded:', carsCache.length); // للتتبع
+  }, err => {
+    console.error('cars snapshot error', err);
+    showToast('Failed to load cars: ' + err.message, 'error');
+  });
 
   // entries
-  const entriesCol = collection(db,'entries');
+  const entriesCol = collection(db, 'entries');
   unsubEntries = onSnapshot(entriesCol, snap => {
-    entriesCache = []; snap.forEach(d => entriesCache.push({ id:d.id, ...d.data() }));
-    renderEntriesTable(); updateDashboard();
-  }, err => { console.error('entries snapshot error', err); });
+    entriesCache = [];
+    snap.forEach(d => entriesCache.push({ id: d.id, ...d.data() }));
+    renderEntriesTable();
+    updateDashboard();
+    console.log('Entries loaded:', entriesCache.length); // للتتبع
+  }, err => {
+    console.error('entries snapshot error', err);
+    showToast('Failed to load entries: ' + err.message, 'error');
+  });
 
-  // users (firestore collection used for demo admin data)
-  const usersCol = collection(db,'users');
+  // users
+  const usersCol = collection(db, 'users');
   unsubUsers = onSnapshot(usersCol, snap => {
-    usersCache = []; snap.forEach(d => usersCache.push({ id:d.id, ...d.data() }));
+    usersCache = [];
+    snap.forEach(d => usersCache.push({ id: d.id, ...d.data() }));
     renderUsers();
-  }, err => { console.error('users snapshot error', err); });
+    console.log('Users loaded:', usersCache.length); // للتتبع
+  }, err => {
+    console.error('users snapshot error', err);
+    showToast('Failed to load users: ' + err.message, 'error');
+  });
+}  // ✅ إغلاق الدالة هنا بشكل صحيح
 
 // load settings doc once
 (async function loadSettings(){
@@ -311,28 +330,343 @@ function updateMonthlyChart(){
   });
 }
 
-// ---------- Daily rent automation ----------
-async function processDailyRent(){
-  try{
-    const today = new Date().toISOString().slice(0,10);
+// ---------- Daily rent automation (IMPROVED) ----------
+async function processDailyRent() {
+  try {
+    console.log('بدء معالجة الإيراد اليومي...');
+    
+    // 1. استخدام التوقيت المحلي لموريتانيا (UTC+0)
+    const now = new Date();
+    const today = now.toLocaleDateString('en-CA', { timeZone: 'Africa/Nouakchott' });
+    console.log('تاريخ اليوم (توقيت موريتانيا):', today);
+    
+    // 2. التحقق من آخر تاريخ معالجة
     const last = await getLastRentDate();
-    if(last === today) { console.log('daily rent already processed'); return; }
-    for(const car of carsCache){
+    console.log('آخر تاريخ معالجة:', last);
+    
+    if (last === today) {
+      console.log('تمت معالجة الإيراد اليومي مسبقاً');
+      return;
+    }
+    
+    // 3. تأكد من وجود سيارات في الذاكرة المؤقتة
+    if (carsCache.length === 0) {
+      console.log('جاري تحميل السيارات من قاعدة البيانات...');
+      const carsSnapshot = await getDocs(collection(db, 'cars'));
+      carsCache = [];
+      carsSnapshot.forEach(d => carsCache.push({ id: d.id, ...d.data() }));
+    }
+    
+    // 4. احصل على مدخلات اليوم من قاعدة البيانات (ليس فقط الكاش)
+    const todayEntriesQuery = query(
+      collection(db, 'entries'),
+      where('date', '==', today),
+      where('category', '==', 'Daily Automated Rent')
+    );
+    
+    const todayEntriesSnapshot = await getDocs(todayEntriesQuery);
+    const processedCarIds = new Set();
+    todayEntriesSnapshot.forEach(doc => {
+      processedCarIds.add(doc.data().carId);
+    });
+    
+    console.log('السيارات التي تمت معالجتها اليوم:', processedCarIds);
+    
+    // 5. معالجة كل سيارة
+    let addedEntries = 0;
+    let totalAmount = 0;
+    
+    for (const car of carsCache) {
       const rent = Number(car.dailyRent) || 0;
-      if(rent > 0){
-        const duplicate = entriesCache.some(e=> e.carId===car.id && e.date===today && e.category==='Daily Automated Rent');
-        if(!duplicate){
-          await addEntryToDB({ carId: car.id, date: today, type:'income', amount: rent, category:'Daily Automated Rent', note:`Daily automated rent - ${car.name}` });
+      
+      if (rent > 0 && !processedCarIds.has(car.id)) {
+        // تأكد من أن السيارة موجودة في قاعدة البيانات
+        const carRef = doc(db, 'cars', car.id);
+        const carDoc = await getDoc(carRef);
+        
+        if (carDoc.exists()) {
+          await addEntryToDB({
+            carId: car.id,
+            date: today,
+            type: 'income',
+            amount: rent,
+            category: 'Daily Automated Rent',
+            note: `إيراد يومي تلقائي - ${car.name}`,
+            autoGenerated: true,
+            timestamp: new Date().toISOString()
+          });
+          
+          addedEntries++;
+          totalAmount += rent;
+          console.log(`✓ أضيف إيراد يومي لسيارة: ${car.name} - ${rent} ${settingsCache.currency}`);
         }
       }
     }
-    await setLastRentDate(today);
-    console.log('daily rent processed for', today);
-  }catch(err){ console.error('processDailyRent error', err); }
+    
+    // 6. تحديث تاريخ آخر معالجة فقط إذا تمت إضافة مدخلات
+    if (addedEntries > 0) {
+      await setLastRentDate(today);
+      console.log(`✅ تمت معالجة الإيراد اليومي: ${addedEntries} مدخلاً - المجموع: ${totalAmount}`);
+      
+      // تحديث الذاكرة المؤقتة والواجهة
+      await refreshEntriesCache();
+      
+      if (window.showToast) {
+        window.showToast(`تم إضافة ${addedEntries} إيراد يومي تلقائي - المجموع: ${fmtMoney(totalAmount)}`, 'success');
+      }
+      
+      // تسجيل العملية في السجل
+      await logDailyRentAction(today, addedEntries, totalAmount);
+    } else {
+      console.log('⚠️ لا توجد إيرادات يومية جديدة لإضافتها');
+      
+      // تحديث تاريخ آخر معالجة حتى لو لم تتم إضافة مدخلات (لتجنب التكرار)
+      await setLastRentDate(today);
+    }
+    
+  } catch (err) {
+    console.error('❌ خطأ في معالجة الإيراد اليومي:', err);
+    if (window.showToast) {
+      window.showToast('فشل إضافة الإيراد اليومي: ' + err.message, 'error');
+    }
+  }
 }
-let lastCheckedDate = new Date().toISOString().slice(0,10);
-setInterval(async ()=>{ const nowDate = new Date().toISOString().slice(0,10); if(nowDate !== lastCheckedDate){ lastCheckedDate = nowDate; await processDailyRent(); } }, 60*1000);
-setTimeout(()=>processDailyRent(), 1500);
+// ---------- Daily rent helper functions ----------
+
+// دالة لتحديث ذاكرة المدخلات
+async function refreshEntriesCache() {
+  try {
+    const entriesSnapshot = await getDocs(collection(db, 'entries'));
+    entriesCache = [];
+    entriesSnapshot.forEach(d => {
+      entriesCache.push({ id: d.id, ...d.data() });
+    });
+    renderEntriesTable();
+    updateDashboard();
+  } catch (err) {
+    console.error('خطأ في تحديث ذاكرة المدخلات:', err);
+  }
+}
+
+// دالة لتسجيل عمليات الإيراد اليومي
+async function logDailyRentAction(date, count, total) {
+  try {
+    const logRef = collection(db, 'daily_rent_logs');
+    await addDoc(logRef, {
+      date: date,
+      processedAt: new Date().toISOString(),
+      entriesAdded: count,
+      totalAmount: total,
+      currency: settingsCache.currency,
+      success: true
+    });
+  } catch (err) {
+    console.error('خطأ في تسجيل الإجراء:', err);
+  }
+}
+// ---------- Daily rent scheduler (IMPROVED) ----------
+let dailyRentInterval = null;
+let lastCheckDate = null;
+
+function setupDailyRentScheduler() {
+  console.log('جاري إعداد جدولة الإيراد اليومي...');
+  
+  // إيقاف أي جدولة سابقة
+  if (dailyRentInterval) {
+    clearInterval(dailyRentInterval);
+  }
+  
+  // 1. تحقق عند تحميل التطبيق
+  setTimeout(() => {
+    console.log('التحقق الأولي للإيراد اليومي...');
+    processDailyRent();
+  }, 5000); // بعد 5 ثواني من التحميل
+  
+  // 2. تحقق كل ساعة
+  dailyRentInterval = setInterval(() => {
+    const now = new Date();
+    const currentDate = now.toLocaleDateString('en-CA', { timeZone: 'Africa/Nouakchott' });
+    
+    // تحقق إذا تغير اليوم
+    if (lastCheckDate !== currentDate) {
+      console.log('تغير اليوم، جاري معالجة الإيراد اليومي...');
+      lastCheckDate = currentDate;
+      processDailyRent();
+    }
+  }, 60 * 60 * 1000); // كل ساعة
+  
+  // 3. تحقق عند عودة المستخدم للتطبيق
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+      console.log('المستخدم عاد للتطبيق، التحقق من الإيراد اليومي...');
+      setTimeout(() => processDailyRent(), 2000);
+    }
+  });
+  
+  // 4. تحقق عند فتح نافذة جديدة
+  window.addEventListener('focus', () => {
+    console.log('النافذة حصلت على التركيز، التحقق من الإيراد اليومي...');
+    setTimeout(() => processDailyRent(), 1000);
+  });
+  
+  // 5. تحقق عند منتصف الليل (00:01)
+  checkMidnightDaily();
+}
+
+// دالة للتحقق في منتصف الليل
+function checkMidnightDaily() {
+  const now = new Date();
+  const hours = now.getHours();
+  const minutes = now.getMinutes();
+  
+  // إذا كان الوقت حوالي منتصف الليل
+  if (hours === 0 && minutes <= 5) {
+    console.log('منتصف الليل - معالجة الإيراد اليومي...');
+    processDailyRent();
+  }
+  
+  // جدولة التحقق القادم
+  const nextCheck = new Date(now);
+  nextCheck.setHours(0, 1, 0, 0); // 00:01
+  if (nextCheck < now) {
+    nextCheck.setDate(nextCheck.getDate() + 1);
+  }
+  
+  const timeUntilMidnight = nextCheck - now;
+  setTimeout(() => {
+    processDailyRent();
+    checkMidnightDaily(); // استمرارية
+  }, timeUntilMidnight);
+}
+
+// إيقاف الجدولة عند تسجيل الخروج
+function stopDailyRentScheduler() {
+  if (dailyRentInterval) {
+    clearInterval(dailyRentInterval);
+    dailyRentInterval = null;
+    console.log('تم إيقاف جدولة الإيراد اليومي');
+  }
+}
+// ---------- Manual Daily Rent Control ----------
+function setupDailyRentUI() {
+  // أضف زر التحكم اليدوي في Dashboard
+  const dashboardTab = document.getElementById('tab-dashboard');
+  if (dashboardTab && !document.getElementById('dailyRentControl')) {
+    const controlHTML = `
+      <div class="card" id="dailyRentControl" style="margin-top: 20px;">
+        <h3 style="margin:0 0 12px 0;"><i class="fas fa-calculator"></i> التحكم في الإيراد اليومي</h3>
+        <div class="muted">إدارة النظام التلقائي للإيراد اليومي</div>
+        
+        <div style="margin-top: 12px; display: flex; gap: 10px; flex-wrap: wrap;">
+          <button id="btnRunDailyRent" class="btn" style="background: var(--success);">
+            <i class="fas fa-play"></i> تشغيل الآن
+          </button>
+          <button id="btnCheckStatus" class="btn ghost">
+            <i class="fas fa-info-circle"></i> التحقق من الحالة
+          </button>
+          <button id="btnTestDailyRent" class="btn ghost">
+            <i class="fas fa-vial"></i> اختبار بتاريخ
+          </button>
+        </div>
+        
+        <div id="dailyRentStatus" style="margin-top: 12px; padding: 12px; background: #f8fafc; border-radius: 8px; display: none;">
+          <div id="statusContent"></div>
+        </div>
+      </div>
+    `;
+    
+    dashboardTab.insertAdjacentHTML('beforeend', controlHTML);
+    
+    // إضافة event listeners
+    l('btnRunDailyRent').addEventListener('click', async () => {
+      if (confirm('هل تريد تشغيل نظام الإيراد اليومي الآن؟')) {
+        await processDailyRent();
+      }
+    });
+    
+    l('btnCheckStatus').addEventListener('click', async () => {
+      await checkDailyRentStatus();
+    });
+    
+    l('btnTestDailyRent').addEventListener('click', async () => {
+      await testDailyRentWithDate();
+    });
+  }
+}
+
+// التحقق من حالة الإيراد اليومي
+async function checkDailyRentStatus() {
+  try {
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Nouakchott' });
+    const lastDate = await getLastRentDate();
+    
+    const statusDiv = l('dailyRentStatus');
+    const contentDiv = l('statusContent');
+    
+    let statusHTML = `
+      <h4>حالة نظام الإيراد اليومي</h4>
+      <p><strong>تاريخ اليوم:</strong> ${today}</p>
+      <p><strong>آخر معالجة:</strong> ${lastDate || 'لم تتم مطلقاً'}</p>
+      <p><strong>الحالة:</strong> ${lastDate === today ? '✅ تمت المعالجة اليوم' : '⚠️ تحتاج المعالجة'}</p>
+      <p><strong>عدد السيارات:</strong> ${carsCache.length}</p>
+      <p><strong>السيارات بالإيجار اليومي:</strong> ${carsCache.filter(c => c.dailyRent > 0).length}</p>
+    `;
+    
+    // تحقق من مدخلات اليوم
+    const todayEntriesQuery = query(
+      collection(db, 'entries'),
+      where('date', '==', today),
+      where('category', '==', 'Daily Automated Rent')
+    );
+    
+    const snapshot = await getDocs(todayEntriesQuery);
+    const todayEntries = [];
+    snapshot.forEach(doc => todayEntries.push(doc.data()));
+    
+    statusHTML += `<p><strong>إيرادات اليوم:</strong> ${todayEntries.length}</p>`;
+    
+    if (todayEntries.length > 0) {
+      statusHTML += `<ul style="margin-top: 8px;">`;
+      todayEntries.forEach(entry => {
+        const car = carsCache.find(c => c.id === entry.carId);
+        statusHTML += `<li>${car ? car.name : 'سيارة غير معروفة'}: ${fmtMoney(entry.amount)}</li>`;
+      });
+      statusHTML += `</ul>`;
+    }
+    
+    contentDiv.innerHTML = statusHTML;
+    statusDiv.style.display = 'block';
+    
+  } catch (err) {
+    console.error('خطأ في التحقق من الحالة:', err);
+    showToast('فشل التحقق من حالة النظام', 'error');
+  }
+}
+
+// اختبار النظام بتاريخ معين
+async function testDailyRentWithDate() {
+  const testDate = prompt('أدخل تاريخ للاختبار (YYYY-MM-DD):', new Date().toLocaleDateString('en-CA'));
+  
+  if (testDate) {
+    if (confirm(`هل تريد تشغيل النظام على تاريخ ${testDate}؟\n(هذا لأغراض الاختبار فقط)`)) {
+      // حفظ التاريخ الأصلي
+      const originalDate = await getLastRentDate();
+      
+      // وضع تاريخ وهمي قديم
+      await setDoc(doc(db, 'meta', 'daily_rent'), { lastDate: '2000-01-01' }, { merge: true });
+      
+      // تشغيل النظام
+      await processDailyRent();
+      
+      // استعادة التاريخ الأصلي
+      if (originalDate) {
+        await setDoc(doc(db, 'meta', 'daily_rent'), { lastDate: originalDate }, { merge: true });
+      }
+      
+      showToast('تم إجراء الاختبار بنجاح', 'success');
+    }
+  }
+}
 
 // ---------- Mobile Menu Toggle ----------
 function toggleMobileMenu(){
@@ -524,7 +858,7 @@ l('btnClearAll').addEventListener('click', async ()=> {
 });
 
 // settings handlers
-const settingLanguage = N("settingLanguage");
+const settingLanguage = l("settingLanguage");
 if (settingLanguage) {
   settingLanguage.addEventListener("change", (e) => {
     setLanguage(e.target.value);
@@ -558,6 +892,28 @@ function applyTheme(theme){
     root.setProperty('--text','#0b1220');
   }
 }
+async function migrateCarsToCurrentUser(user) {
+  try {
+    const snap = await getDocs(collection(db, "cars"));
+
+    let updated = 0;
+
+    for (const d of snap.docs) {
+      const data = d.data();
+      if (!data.userId) {
+        await updateDoc(doc(db, "cars", d.id), {
+          userId: user.uid
+        });
+        updated++;
+      }
+    }
+
+    console.log(`Cars migration done. Updated: ${updated}`);
+  } catch (err) {
+    console.error("Cars migration failed", err);
+  }
+}
+
 
 // users (firestore)
 l('btnAddUser').addEventListener('click', async () => {
@@ -582,15 +938,25 @@ l('usersTable').querySelector('tbody').addEventListener('click', async (ev)=> {
 });
 
 // ---------- Authentication (Firebase Auth) ----------
-l('btnLogin').addEventListener('click', ()=> l('modalLogin').style.display = 'flex');
-l('btnCloseLogin').addEventListener('click', ()=> l('modalLogin').style.display = 'none');
-
 l('btnDoLogin').addEventListener('click', async ()=>{
-  const email = l('loginEmail').value.trim(), pass = l('loginPass').value.trim();
-  if(!email || !pass) return window.showToast ? window.showToast('Please provide email and password', 'warning') : alert('Provide email and password');
+  const email = l('loginEmail').value.trim(),
+        pass  = l('loginPass').value.trim();
+
+  if(!email || !pass)
+    return window.showToast
+      ? window.showToast('Please provide email and password', 'warning')
+      : alert('Provide email and password');
+
   try{
-    await signInWithEmailAndPassword(auth, email, pass);
-    if(window.showToast) window.showToast('Login successful!', 'success');
+    const cred = await signInWithEmailAndPassword(auth, email, pass);
+    const user = cred.user;
+
+    // 👇 السطر الحاسم
+    await migrateCarsToCurrentUser(user);
+
+    if(window.showToast)
+      window.showToast('Login successful!', 'success');
+
   }catch(err){
     console.error('login error', err);
     const msg = 'Login failed: ' + (err.message || err.code);
@@ -599,28 +965,51 @@ l('btnDoLogin').addEventListener('click', async ()=>{
   }
 });
 
-const handleSignOut = async ()=>{ try{ await signOut(auth); if(window.showToast) window.showToast('Signed out successfully', 'info'); else alert('Signed out'); }catch(err){ console.error('signout', err); if(window.showToast) window.showToast('Sign out failed', 'error'); else alert('Sign out failed'); } };
-l('btnSignOut').addEventListener('click', handleSignOut);
 // btnSignOutSidebar removed - using btnSignOut in topbar instead
 
-onAuthStateChanged(auth, async (user)=>{
-  if(user){
-    console.log('User signed in:', user.email);
-    info(`User authenticated: ${user.email}`);
-    window.currentUser = { uid: user.uid, email: user.email };
-    l('modalLogin').style.display = 'none';
-    // Sign out button is always visible in topbar
-    attachRealtimeListeners();
-    showTab('dashboard');
-    ensureDemoUsers();
-    if(window.showToast) window.showToast(`Welcome, ${user.email}!`, 'success');
-  } else {
-    console.log('No user signed in');
-    warn('No user authenticated');
-    window.currentUser = null;
-    // Sign out button is always visible in topbar
-    detachRealtimeListeners();
-    l('modalLogin').style.display = 'flex';
+// ---------- Authentication with Daily Rent Setup ----------
+onAuthStateChanged(auth, async (user) => {
+  try {
+    console.log('تغير حالة المصادقة:', user ? user.email : 'لا يوجد مستخدم');
+    
+    if (user) {
+      console.log('تم تسجيل دخول:', user.email);
+      
+      window.currentUser = { 
+        uid: user.uid, 
+        email: user.email,
+        name: user.displayName || user.email.split('@')[0]
+      };
+      
+      // تحديث الواجهة
+      l('uiUser').innerText = window.currentUser.email;
+      l('modalLogin').style.display = 'none';
+      
+      // إرفاق مستمعي البيانات
+      attachRealtimeListeners();
+      
+      // إعداد نظام الإيراد اليومي
+      setupDailyRentScheduler();
+      setupDailyRentUI(); // إضافة واجهة التحكم
+      
+      // عرض التبويب الرئيسي
+      showTab('dashboard');
+      
+      // إنشاء مستخدمين تجريبيين إذا لزم الأمر
+      ensureDemoUsers();
+      
+      // رسالة ترحيب
+      showToast(`مرحباً ${window.currentUser.name}!`, 'success');
+    } else {
+      console.log('لم يتم تسجيل دخول');
+      // إخفاء الواجهة وإظهار تسجيل الدخول
+      l('modalLogin').style.display = 'flex';
+      detachRealtimeListeners();
+      // لا يوجد تبويب login، لذا نترك الواجهة كما هي
+    }
+  } catch (error) {
+    console.error('خطأ في معالجة حالة المصادقة:', error);
+    showToast('حدث خطأ في المصادقة: ' + error.message, 'error');
   }
 });
 
@@ -637,7 +1026,49 @@ async function ensureDemoUsers(){
 }
 
 // ---------- Auto-backup (simple meta doc) ----------
+// ---------- Login/Logout Button Events ----------
 
+// زر تسجيل الدخول في الشريط الجانبي
+l('btnLogin').addEventListener('click', () => {
+  l('modalLogin').style.display = 'flex';
+  console.log('Login button clicked - opening modal');
+});
+
+// زر إغلاق نافذة التسجيل
+l('btnCloseLogin').addEventListener('click', () => {
+  l('modalLogin').style.display = 'none';
+  console.log('Close login button clicked');
+});
+
+// زر تسجيل الخروج في الشريط الجانبي
+l('btnSignOut').addEventListener('click', async () => {
+  try {
+    console.log('Sign out button clicked');
+    await signOut(auth);
+    if(window.showToast) {
+      window.showToast('تم تسجيل الخروج بنجاح', 'success');
+    }
+    detachRealtimeListeners();
+    showTab('dashboard');
+  } catch (err) {
+    console.error('Sign out error:', err);
+    if(window.showToast) {
+      window.showToast('فشل تسجيل الخروج: ' + (err.message || err), 'error');
+    }
+  }
+});
+
+// زر تسجيل الخروج في الهيدر (إذا كان موجوداً)
+const topbarSignOut = document.getElementById('btnSignOutTopbar');
+if (topbarSignOut) {
+  topbarSignOut.addEventListener('click', async () => {
+    try {
+      await signOut(auth);
+    } catch (err) {
+      console.error('Topbar sign out error:', err);
+    }
+  });
+}
 
 // ---------- Initial UI state ----------
 function initialUI(){
@@ -648,3 +1079,108 @@ initialUI();
 
 // setupAutoBackup will be called after settings are loaded in attachRealtimeListeners
 setTimeout(()=>{ processDailyRent(); }, 2000);
+// في نهاية ملف app.js، أضف:
+
+// تسجيل Service Worker
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/service-worker.js')
+      .then((registration) => {
+        console.log('Service Worker مسجل بنجاح:', registration.scope);
+      })
+      .catch((error) => {
+        console.error('فشل تسجيل Service Worker:', error);
+      });
+  });
+}
+
+// ---------- PWA Installation ----------
+function setupPWA() {
+  console.log('إعداد PWA...');
+  
+  // تسجيل Service Worker
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/service-worker.js')
+        .then((registration) => {
+          console.log('✅ Service Worker مسجل بنجاح:', registration.scope);
+        })
+        .catch((error) => {
+          console.error('❌ فشل تسجيل Service Worker:', error);
+        });
+    });
+  }
+  
+  // التحقق من وضع التطبيق المثبت
+  function checkDisplayMode() {
+    if (window.matchMedia('(display-mode: standalone)').matches || 
+        window.navigator.standalone === true) {
+      console.log('التطبيق يعمل في وضع PWA');
+      document.documentElement.setAttribute('data-pwa', 'true');
+    }
+  }
+  
+  checkDisplayMode();
+  
+  // إضافة زر التثبيت
+  let deferredPrompt;
+  const installButton = document.createElement('button');
+  installButton.id = 'installPWAButton';
+  installButton.innerHTML = '<i class="fas fa-download"></i> تثبيت التطبيق';
+  installButton.style.cssText = `
+    position: fixed;
+    bottom: 20px;
+    left: 20px;
+    z-index: 10000;
+    background: linear-gradient(135deg, var(--accent), #6d28d9);
+    color: white;
+    border: none;
+    padding: 12px 20px;
+    border-radius: 25px;
+    font-weight: 600;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    display: none;
+    cursor: pointer;
+  `;
+  
+  document.body.appendChild(installButton);
+  
+  // حدث قبل التثبيت
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    
+    // إظهار زر التثبيت بعد 5 ثواني
+    setTimeout(() => {
+      installButton.style.display = 'block';
+    }, 5000);
+    
+    installButton.onclick = () => {
+      installButton.style.display = 'none';
+      deferredPrompt.prompt();
+      
+      deferredPrompt.userChoice.then((choiceResult) => {
+        if (choiceResult.outcome === 'accepted') {
+          console.log('✅ قبل المستخدم تثبيت التطبيق');
+          if (window.showToast) {
+            window.showToast('تم تثبيت التطبيق بنجاح!', 'success');
+          }
+        } else {
+          console.log('❌ رفض المستخدم تثبيت التطبيق');
+        }
+        deferredPrompt = null;
+      });
+    };
+  });
+  
+  // التحقق إذا كان التطبيق مثبت
+  window.addEventListener('appinstalled', () => {
+    console.log('التطبيق مثبت بنجاح');
+    installButton.style.display = 'none';
+  });
+}
+
+// تشغيل إعداد PWA
+document.addEventListener('DOMContentLoaded', () => {
+  setTimeout(() => setupPWA(), 2000);
+});

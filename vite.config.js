@@ -1,12 +1,21 @@
-// vite.config.js - Vite configuration
-export default {
-  server: {
-    port: 5173,
-    open: true,
-  },
+// vite.config.js
+import { defineConfig } from 'vite'
+
+export default defineConfig({
   build: {
     outDir: 'dist',
-    sourcemap: true,
-    minify: 'terser',
+    assetsDir: 'assets',
+    rollupOptions: {
+      input: {
+        main: './index.html'
+      }
+    }
   },
-};
+  server: {
+    open: true,
+    port: 3000,
+    hmr: {
+      port: 3000
+    }
+  }
+})

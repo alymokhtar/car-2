@@ -6,6 +6,155 @@
   <meta name="description" content="Car Rental PRO - Professional car rental management dashboard with Firebase" />
   <title>Car Rental PRO — Dashboard (Firebase + Auth)</title>
 
+<!-- PWA Meta Tags -->
+<meta name="application-name" content="Car Rental PRO">
+<meta name="apple-mobile-web-app-title" content="Car Rental">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#06b6d4">
+<meta name="msapplication-TileColor" content="#06b6d4">
+
+<!-- Manifest -->
+<link rel="manifest" href="/manifest.json">
+
+<!-- Apple Touch Icons (باستخدام الأيقونات الموجودة) -->
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="apple-touch-icon" sizes="180x180" href="icon-180.png">
+<link rel="apple-touch-icon" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" sizes="512x512" href="icon-512.png">
+
+<!-- Favicon (استخدم icon-192 كفافيكون) -->
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="shortcut icon" href="icon-192.png">
+
+<!-- Splash Screens الأساسية فقط -->
+<!--<link rel="apple-touch-startup-image" href="icon-512.png"> -->
+  
+<!-- Splash Screen بسيطة باستخدام أيقونة 512 الموجودة -->
+<div id="splashScreen" style="
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(135deg, #0f1724 0%, #1e293b 100%);
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    transition: opacity 0.5s ease;
+">
+    <div style="text-align: center; padding: 20px; max-width: 400px;">
+        <!-- استخدام أيقونة 512 الموجودة -->
+        <img src="icon-512.png" alt="Logo" style="
+            width: 120px;
+            height: 120px;
+            border-radius: 25px;
+            margin: 0 auto 30px;
+            box-shadow: 0 10px 30px rgba(6, 182, 212, 0.3);
+        ">
+        
+        <h1 style="
+            font-size: 28px;
+            font-weight: 800;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, #06b6d4, #7c3aed);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        ">Car Rental PRO</h1>
+        
+        <p style="font-size: 16px; color: #94a3b8; margin-bottom: 40px;">
+            نظام إدارة إيجار السيارات
+        </p>
+        
+        <!-- شريط التحميل -->
+        <div style="
+            width: 100%;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+            overflow: hidden;
+            margin-bottom: 20px;
+        ">
+            <div id="splashProgress" style="
+                height: 100%;
+                background: linear-gradient(90deg, #06b6d4, #7c3aed);
+                width: 0%;
+                border-radius: 3px;
+                transition: width 0.3s ease;
+            "></div>
+        </div>
+        
+        <p id="splashStatus" style="font-size: 14px; color: #94a3b8;">
+            جاري التحميل...
+        </p>
+    </div>
+    
+    <div style="
+        position: absolute;
+        bottom: 20px;
+        color: #64748b;
+        font-size: 12px;
+    ">
+        BY "ALY MOKHTAR" © 2025
+    </div>
+</div>
+
+<script>
+// كود التحكم في Splash Screen
+window.addEventListener('load', () => {
+    const splashScreen = document.getElementById('splashScreen');
+    const splashProgress = document.getElementById('splashProgress');
+    const splashStatus = document.getElementById('splashStatus');
+    
+    // رسائل الحالة
+    const statusMessages = [
+        "جاري التحميل...",
+        "جاري تهيئة النظام...",
+        "جاهز!"
+    ];
+    
+    let progress = 0;
+    let messageIndex = 0;
+    
+    // تحديث التقدم
+    function updateProgress() {
+        progress += 33; // 3 مراحل
+        splashProgress.style.width = progress + '%';
+        
+        // تحديث الرسالة
+        if (messageIndex < statusMessages.length) {
+            splashStatus.textContent = statusMessages[messageIndex];
+            messageIndex++;
+        }
+        
+        // إذا لم يكتمل بعد، استمر
+        if (progress < 100) {
+            setTimeout(updateProgress, 500);
+        } else {
+            // إخفاء Splash Screen
+            setTimeout(() => {
+                splashScreen.style.opacity = '0';
+                setTimeout(() => {
+                    splashScreen.style.display = 'none';
+                }, 500);
+            }, 300);
+        }
+    }
+    
+    // بدء التحميل بعد ثانية
+    setTimeout(updateProgress, 1000);
+    
+    // إخفاء تلقائي بعد 5 ثواني (في حالة حدوث خطأ)
+    setTimeout(() => {
+        splashScreen.style.display = 'none';
+    }, 5000);
+});
+</script>
+
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -701,6 +850,96 @@
     .tab{
       animation:fadeIn 0.3s ease;
     }
+    /* Daily Rent Control Panel Styles */
+#dailyRentControl {
+  border: 1px solid #e2e8f0;
+  transition: all 0.3s ease;
+}
+
+#dailyRentControl:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  border-color: var(--accent);
+}
+
+#dailyRentStatus {
+  border-left: 4px solid var(--accent);
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  animation: fadeIn 0.5s ease;
+}
+
+#dailyRentStatus h4 {
+  margin: 0 0 8px 0;
+  color: var(--text);
+  font-weight: 600;
+}
+
+#dailyRentStatus p {
+  margin: 6px 0;
+  font-size: 14px;
+}
+
+#dailyRentStatus ul {
+  margin: 8px 0;
+  padding-left: 20px;
+}
+
+#dailyRentStatus li {
+  margin: 4px 0;
+  padding: 4px 8px;
+  background: white;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+}
+
+#btnRunDailyRent:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(16, 185, 129, 0.35);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* PWA Styles */
+@media (display-mode: standalone) {
+  body {
+    overflow: hidden;
+    height: 100vh;
+  }
+  
+  .app {
+    height: 100vh;
+  }
+  
+  /* إخفاء شريط العناوين في PWA */
+  .topbar h1 {
+    font-size: 20px;
+  }
+}
+
+/* زر تثبيت PWA */
+#installPWAButton {
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+
+/* Splash Screen Animation */
+@keyframes splashFadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; visibility: hidden; }
+}
+
+#splashScreen {
+  animation: splashFadeOut 0.5s ease forwards;
+  animation-delay: 3s;
+}
+
   </style>
 </head>
 <body>
@@ -940,9 +1179,6 @@
 <!-- Toast Notification Container -->
 <div class="toast-container" id="toastContainer"></div>
 
-<!-- Firebase modular SDK (ES module) + app code -->
-<script type="module" src="./src/app.js"></script>
-
 <!-- Toast Notification Helper -->
 <script>
   function showToast(message, type = 'info') {
@@ -971,6 +1207,9 @@
   // Make toast function globally available
   window.showToast = showToast;
 </script>
+
+<!-- Firebase modular SDK (ES module) + app code -->
+<script type="module" src="./src/app.js"></script>
 </body>
 </html>
 <!--

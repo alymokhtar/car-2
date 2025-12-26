@@ -11,6 +11,10 @@
     "ecmaVersion": 12,
     "sourceType": "module"
   },
+  "globals": {
+    "Chart": "readonly",
+    "showToast": "readonly"
+  },
   "rules": {
     "no-unused-vars": "warn",
     "no-console": "warn",
