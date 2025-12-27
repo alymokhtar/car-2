@@ -88,6 +88,21 @@ function attachRealtimeListeners() {
   });
 }  // ✅ إغلاق الدالة هنا بشكل صحيح
 
+// ---------- Visibility change for performance ----------
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    // Pause listeners when tab is hidden
+    detachRealtimeListeners();
+    console.log('Listeners paused due to visibility change');
+  } else {
+    // Resume listeners when tab is visible
+    if (auth.currentUser) {
+      attachRealtimeListeners();
+      console.log('Listeners resumed due to visibility change');
+    }
+  }
+});
+
 // load settings doc once
 (async function loadSettings(){
   try {

@@ -64,10 +64,10 @@
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
-        ">Car Rental PRO</h1>
+        ">Ward Cars</h1>
         
         <p style="font-size: 16px; color: #94a3b8; margin-bottom: 40px;">
-            نظام إدارة إيجار السيارات
+            Ward Cars
         </p>
         
         <!-- شريط التحميل -->
@@ -89,7 +89,7 @@
         </div>
         
         <p id="splashStatus" style="font-size: 14px; color: #94a3b8;">
-            جاري التحميل...
+            loading ..
         </p>
     </div>
     
@@ -377,6 +377,7 @@ window.addEventListener('load', () => {
       box-shadow:0 4px 12px rgba(6,182,212,0.25);
       position:relative;
       overflow:hidden;
+      touch-action: manipulation;
     }
     
     .btn::before{
@@ -726,7 +727,8 @@ window.addEventListener('load', () => {
       .main{
         padding:16px;
         width:100%;
-        overflow:visible;
+        overflow:auto;
+        -webkit-overflow-scrolling:touch;
         min-height:auto;
         position:relative;
         z-index:1;
