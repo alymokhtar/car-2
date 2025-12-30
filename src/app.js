@@ -1085,7 +1085,7 @@ onAuthStateChanged(auth, async (user) => {
       showTab('dashboard');
       ensureDemoUsers();
       
-      showToast(`مرحباً ${window.currentUser.name}!`, 'success');
+      showToast(`welcome ${window.currentUser.name}!`, 'success');
     } else {
       console.log('لم يتم تسجيل دخول');
       l('modalLogin').style.display = 'flex';
