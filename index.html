@@ -112,9 +112,9 @@ window.addEventListener('load', () => {
     
     // رسائل الحالة
     const statusMessages = [
-        "جاري التحميل...",
-        "جاري تهيئة النظام...",
-        "جاهز!"
+        " loading...",
+        "Initializing system...",
+        "Ready!"
     ];
     
     let progress = 0;
@@ -421,6 +421,15 @@ window.addEventListener('load', () => {
     }
     .btn.ghist #btnlogin{
       color:var(--accent) !important;
+    }
+    #btnDownloadBackup {
+      width: 100%;
+    }
+    #btnImportBackup{
+      width: 100%;
+    }
+    #btnSignOut{
+      width: 100%;
     }
     /* Enhanced Cards */
     .card{
@@ -971,8 +980,8 @@ window.addEventListener('load', () => {
     <div class="controls">
 
       <button id="btnDownloadBackup" class="btn ghost"><i class="fas fa-download"></i> Download Backup</button>
-      <button id="btnImportBackup" class="btn"><i class="fas fa-upload"></i> Import Backup</button>
-      <button id="btnSignOut" class="btn ghost" style="background:transparent;border:1px solid #e2e8f0;color:var(--text)"><i class="fas fa-sign-out-alt"></i> Sign out</button>
+      <button id="btnImportBackup" class="btn ghost"><i class="fas fa-upload"></i> Import Backup</button>
+      <button id="btnSignOut" class="btn"><i class="fas fa-sign-out-alt"></i> Sign out</button>
     </div>
     <div class="foot muted" style="margin-top:auto">BY "ALY MOKHTAR".</div>
   </aside>
