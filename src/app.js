@@ -43,13 +43,11 @@ function fmtMoney(amount){ const cur = settingsCache.currency || 'MRU'; const n 
 function escapeHtml(str){ if(typeof str !== 'string') return str; return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;'); }
 function downloadFile(filename, contentType, content){ const a=document.createElement('a'); const blob=new Blob([content],{type:contentType}); a.href=URL.createObjectURL(blob); a.download=filename; document.body.appendChild(a); a.click(); document.body.removeChild(a); }
 function showToast(message, type = 'info') {
-  // إذا كان showToast غير معرف، ننشئ واحداً بسيطاً
   if (typeof window.showToast === 'function') {
     window.showToast(message, type);
     return;
   }
   
-  // إنشاء toast بسيط
   const toast = document.createElement('div');
   toast.style.cssText = `
     position: fixed;
@@ -77,12 +75,12 @@ function showToast(message, type = 'info') {
   }, 3000);
 }
 
-// ---------- Daily Income System (NEW IMPROVED VERSION) ----------
+// ---------- Daily Income System (IMPROVED WITH CATCH-UP FEATURE) ----------
 class DailyIncomeProcessor {
   constructor() {
     this.isProcessing = false;
     this.lastProcessedDate = null;
-    this.processedCarsToday = new Set();
+    this.maxCatchUpDays = 365; // أقصى عدد من الأيام للتعويض (سنة واحدة)
   }
 
   async init() {
@@ -97,11 +95,9 @@ class DailyIncomeProcessor {
       if (metaDoc.exists()) {
         const data = metaDoc.data();
         this.lastProcessedDate = data.lastDate || null;
-        this.processedCarsToday = new Set(data.processedCars || []);
       } else {
         await setDoc(metaRef, {
           lastDate: null,
-          processedCars: [],
           updatedAt: serverTimestamp()
         });
       }
@@ -110,12 +106,11 @@ class DailyIncomeProcessor {
     }
   }
 
-  async saveProcessingState(date, processedCarIds) {
+  async saveProcessingState(date) {
     try {
       const metaRef = doc(db, 'meta', 'daily_income');
       await setDoc(metaRef, {
         lastDate: date,
-        processedCars: Array.from(processedCarIds),
         updatedAt: serverTimestamp()
       }, { merge: true });
     } catch (err) {
@@ -123,8 +118,7 @@ class DailyIncomeProcessor {
     }
   }
 
-  async processDailyIncome() {
-    // منع التكرار والمزامنة
+  async processDailyIncomeWithCatchUp() {
     if (this.isProcessing) {
       console.log('جاري المعالجة بالفعل، تم تجاهل الاستدعاء');
       return { success: false, reason: 'already_processing' };
@@ -132,19 +126,50 @@ class DailyIncomeProcessor {
 
     try {
       this.isProcessing = true;
-      console.log('🚀 بدء معالجة الإيراد اليومي...');
+      console.log('🚀 بدء معالجة الإيراد اليومي مع التعويض عن الأيام السابقة...');
 
       // الحصول على تاريخ اليوم بتوقيت موريتانيا
       const today = this.getMauritaniaDate();
-      console.log('📅 تاريخ اليوم (توقيت موريتانيا):', today);
+      console.log('📅 تاريخ اليوم:', today);
 
-      // التحقق إذا تمت معالجة اليوم بالفعل
-      if (this.lastProcessedDate === today) {
-        console.log('✅ تمت معالجة اليوم بالفعل');
-        return { success: true, reason: 'already_processed_today', entriesAdded: 0 };
+      // تحديد تاريخ البدء للتعويض
+      let startDate = this.lastProcessedDate;
+      
+      // إذا لم يكن هناك تاريخ معالجة سابق، نبدأ من اليوم فقط
+      if (!startDate) {
+        console.log('⚠️ لا يوجد تاريخ معالجة سابق، سيتم معالجة اليوم فقط');
+        startDate = today;
       }
 
-      // تحميل السيارات من قاعدة البيانات مباشرة
+      // تحويل التواريخ إلى كائنات Date للمقارنة
+      const startDateObj = new Date(startDate);
+      const todayDateObj = new Date(today);
+      
+      // حساب عدد الأيام للتعويض
+      const timeDiff = todayDateObj.getTime() - startDateObj.getTime();
+      const daysDiff = Math.floor(timeDiff / (1000 * 3600 * 24));
+      
+      console.log(`📊 عدد الأيام التي تحتاج معالجة: ${daysDiff}`);
+
+      if (daysDiff <= 0) {
+        console.log('✅ لا توجد أيام تحتاج إلى معالجة');
+        return { success: true, reason: 'no_days_to_process', entriesAdded: 0 };
+      }
+
+      // تحديد نطاق الأيام للمعالجة (بحد أقصى maxCatchUpDays)
+      const daysToProcess = Math.min(daysDiff, this.maxCatchUpDays);
+      const datesToProcess = [];
+      
+      for (let i = 1; i <= daysToProcess; i++) {
+        const dateObj = new Date(startDateObj);
+        dateObj.setDate(dateObj.getDate() + i);
+        const dateStr = dateObj.toISOString().split('T')[0];
+        datesToProcess.push(dateStr);
+      }
+
+      console.log(`📅 الأيام التي سيتم معالجتها: ${datesToProcess.join(', ')}`);
+
+      // تحميل السيارات من قاعدة البيانات
       const carsSnapshot = await getDocs(collection(db, 'cars'));
       const cars = [];
       carsSnapshot.forEach(d => cars.push({ id: d.id, ...d.data() }));
@@ -154,77 +179,63 @@ class DailyIncomeProcessor {
         return { success: true, reason: 'no_cars', entriesAdded: 0 };
       }
 
-      // الحصول على الإدخالات الموجودة لليوم
-      const existingEntries = await this.getTodayEntries(today);
-      const processedCarIds = new Set();
-      existingEntries.forEach(entry => processedCarIds.add(entry.carId));
-
-      // تصفية السيارات التي لم تتم معالجتها اليوم ولها إيراد يومي
-      const carsToProcess = cars.filter(car => 
-        !processedCarIds.has(car.id) && 
-        Number(car.dailyRent) > 0
-      );
-
-      if (carsToProcess.length === 0) {
-        console.log('⚠️ لا توجد سيارات جديدة تحتاج إلى إيراد يومي');
-        // مع ذلك، نحفظ أن اليوم تمت معالجته
-        await this.saveProcessingState(today, processedCarIds);
+      // تصفية السيارات التي لها إيراد يومي
+      const carsWithRent = cars.filter(car => Number(car.dailyRent) > 0);
+      
+      if (carsWithRent.length === 0) {
+        console.log('⚠️ لا توجد سيارات بإيراد يومي');
+        await this.saveProcessingState(today);
         this.lastProcessedDate = today;
-        return { success: true, reason: 'no_new_cars', entriesAdded: 0 };
+        return { success: true, reason: 'no_cars_with_rent', entriesAdded: 0 };
       }
 
-      console.log(`🎯 عدد السيارات التي ستتم معالجتها: ${carsToProcess.length}`);
-
-      // معالجة كل سيارة
-      let addedEntries = 0;
+      let totalEntriesAdded = 0;
       let totalAmount = 0;
-      const newProcessedCars = new Set([...processedCarIds]);
 
-      for (const car of carsToProcess) {
-        try {
-          const result = await this.addDailyIncomeForCar(car, today);
-          if (result.success) {
-            addedEntries++;
-            totalAmount += Number(car.dailyRent);
-            newProcessedCars.add(car.id);
-            console.log(`✅ أضيف إيراد يومي لسيارة: ${car.name} - ${car.dailyRent} ${settingsCache.currency}`);
-          }
-        } catch (err) {
-          console.error(`❌ خطأ في معالجة السيارة ${car.name}:`, err);
-          // نستمر في معالجة السيارات الأخرى
-        }
+      // معالجة كل يوم على حدة
+      for (const date of datesToProcess) {
+        console.log(`📝 معالجة يوم: ${date}`);
+        
+        const entriesAddedForDate = await this.processDay(date, carsWithRent);
+        totalEntriesAdded += entriesAddedForDate.count;
+        totalAmount += entriesAddedForDate.amount;
+        
+        // تحديث آخر تاريخ معالج بعد كل يوم
+        await this.saveProcessingState(date);
+        this.lastProcessedDate = date;
+        
+        console.log(`✅ تمت معالجة يوم ${date}: ${entriesAddedForDate.count} إدخالاً`);
       }
 
-      // حفظ حالة المعالجة
-      await this.saveProcessingState(today, newProcessedCars);
+      // تحديث آخر تاريخ معالج إلى اليوم
+      await this.saveProcessingState(today);
       this.lastProcessedDate = today;
-      this.processedCarsToday = newProcessedCars;
 
-      // تحديث الكاش وعرض النتائج
-      if (addedEntries > 0) {
-        console.log(`🎉 تمت معالجة الإيراد اليومي: ${addedEntries} مدخلاً - المجموع: ${totalAmount}`);
+      // تحديث ذاكرة المدخلات
+      await this.refreshEntriesCache();
+
+      // عرض النتائج
+      if (totalEntriesAdded > 0) {
+        console.log(`🎉 تمت المعالجة بنجاح! ${totalEntriesAdded} إدخالاً - المجموع: ${totalAmount}`);
         
-        // تحديث ذاكرة المدخلات
-        await this.refreshEntriesCache();
-        
-        // عرض إشعار للمستخدم
         showToast(
-          `تم إضافة ${addedEntries} إيراد يومي تلقائي - المجموع: ${fmtMoney(totalAmount)}`, 
+          `تم إضافة ${totalEntriesAdded} إيراد يومي (لـ ${datesToProcess.length} يوم) - المجموع: ${fmtMoney(totalAmount)}`, 
           'success'
         );
 
         // تسجيل العملية
-        await this.logDailyProcessing(today, addedEntries, totalAmount);
-        
-        return { 
-          success: true, 
-          reason: 'processed', 
-          entriesAdded: addedEntries, 
-          totalAmount: totalAmount 
-        };
+        await this.logCatchUpProcessing(datesToProcess, totalEntriesAdded, totalAmount);
+      } else {
+        showToast('تم التحقق من جميع الأيام، لا توجد إيرادات جديدة لإضافتها', 'info');
       }
 
-      return { success: true, reason: 'no_entries_added', entriesAdded: 0 };
+      return { 
+        success: true, 
+        reason: 'processed', 
+        daysProcessed: datesToProcess.length,
+        entriesAdded: totalEntriesAdded, 
+        totalAmount: totalAmount 
+      };
 
     } catch (err) {
       console.error('❌ خطأ عام في معالجة الإيراد اليومي:', err);
@@ -235,9 +246,44 @@ class DailyIncomeProcessor {
     }
   }
 
+  async processDay(date, carsWithRent) {
+    try {
+      // الحصول على الإدخالات الموجودة لهذا اليوم
+      const existingEntries = await this.getEntriesForDate(date);
+      const existingCarIds = new Set();
+      existingEntries.forEach(entry => existingCarIds.add(entry.carId));
+
+      // تصفية السيارات التي لم تتم معالجتها في هذا اليوم
+      const carsToProcess = carsWithRent.filter(car => !existingCarIds.has(car.id));
+
+      if (carsToProcess.length === 0) {
+        return { count: 0, amount: 0 };
+      }
+
+      let entriesAdded = 0;
+      let dayTotalAmount = 0;
+
+      // معالجة كل سيارة
+      for (const car of carsToProcess) {
+        try {
+          await this.addDailyIncomeForCar(car, date);
+          entriesAdded++;
+          dayTotalAmount += Number(car.dailyRent);
+        } catch (err) {
+          console.error(`❌ خطأ في معالجة السيارة ${car.name} ليوم ${date}:`, err);
+          // نستمر في معالجة السيارات الأخرى
+        }
+      }
+
+      return { count: entriesAdded, amount: dayTotalAmount };
+    } catch (err) {
+      throw err;
+    }
+  }
+
   async addDailyIncomeForCar(car, date) {
     try {
-      // التحقق من عدم وجود إدخال مسبق
+      // التحقق من عدم وجود إدخال مسبق لهذه السيارة في هذا اليوم
       const entriesQuery = query(
         collection(db, 'entries'),
         where('carId', '==', car.id),
@@ -247,7 +293,7 @@ class DailyIncomeProcessor {
       
       const querySnapshot = await getDocs(entriesQuery);
       if (!querySnapshot.empty) {
-        throw new Error('Entry already exists for this car today');
+        throw new Error('Entry already exists for this car on this date');
       }
 
       // إنشاء الإدخال
@@ -260,7 +306,8 @@ class DailyIncomeProcessor {
         note: `إيراد يومي تلقائي - ${car.name}`,
         autoGenerated: true,
         timestamp: new Date().toISOString(),
-        processedAt: new Date().toISOString()
+        processedAt: new Date().toISOString(),
+        catchUpEntry: true // علامة لتحديد أن هذا الإدخال تمت إضافته خلال عملية التعويض
       };
 
       await addDoc(collection(db, 'entries'), entryData);
@@ -270,7 +317,7 @@ class DailyIncomeProcessor {
     }
   }
 
-  async getTodayEntries(date) {
+  async getEntriesForDate(date) {
     try {
       const entriesQuery = query(
         collection(db, 'entries'),
@@ -285,7 +332,7 @@ class DailyIncomeProcessor {
       });
       return entries;
     } catch (err) {
-      console.error('خطأ في جلب إدخالات اليوم:', err);
+      console.error(`خطأ في جلب إدخالات يوم ${date}:`, err);
       return [];
     }
   }
@@ -304,19 +351,20 @@ class DailyIncomeProcessor {
     }
   }
 
-  async logDailyProcessing(date, count, total) {
+  async logCatchUpProcessing(dates, count, total) {
     try {
       const logRef = collection(db, 'daily_income_logs');
       await addDoc(logRef, {
-        date: date,
+        datesProcessed: dates,
         processedAt: new Date().toISOString(),
         entriesAdded: count,
         totalAmount: total,
         currency: settingsCache.currency,
+        type: 'catch_up',
         success: true
       });
     } catch (err) {
-      console.error('خطأ في تسجيل العملية:', err);
+      console.error('خطأ في تسجيل عملية التعويض:', err);
     }
   }
 
@@ -328,17 +376,87 @@ class DailyIncomeProcessor {
 
   async getProcessingStatus() {
     const today = this.getMauritaniaDate();
-    const existingEntries = await this.getTodayEntries(today);
+    const todayEntries = await this.getEntriesForDate(today);
+    
+    // حساب الأيام المفقودة منذ آخر معالجة
+    let missedDays = 0;
+    if (this.lastProcessedDate) {
+      const lastDateObj = new Date(this.lastProcessedDate);
+      const todayDateObj = new Date(today);
+      const timeDiff = todayDateObj.getTime() - lastDateObj.getTime();
+      missedDays = Math.max(0, Math.floor(timeDiff / (1000 * 3600 * 24)) - 1);
+    }
     
     return {
       today: today,
       lastProcessedDate: this.lastProcessedDate,
       isTodayProcessed: this.lastProcessedDate === today,
+      missedDays: missedDays,
       carsCount: carsCache.length,
       carsWithDailyRent: carsCache.filter(c => Number(c.dailyRent) > 0).length,
-      todayEntriesCount: existingEntries.length,
-      processedCarsToday: existingEntries.map(e => e.carId)
+      todayEntriesCount: todayEntries.length,
+      maxCatchUpDays: this.maxCatchUpDays
     };
+  }
+
+  // دالة لمعالجة اليوم الحالي فقط (للجدولة اليومية)
+  async processCurrentDay() {
+    if (this.isProcessing) {
+      return { success: false, reason: 'already_processing' };
+    }
+
+    try {
+      this.isProcessing = true;
+      const today = this.getMauritaniaDate();
+      
+      // إذا تمت معالجة اليوم بالفعل، لا نفعل شيئاً
+      if (this.lastProcessedDate === today) {
+        return { success: true, reason: 'already_processed_today', entriesAdded: 0 };
+      }
+
+      console.log(`🔄 معالجة الإيراد اليومي ليوم: ${today}`);
+      
+      // تحميل السيارات
+      const carsSnapshot = await getDocs(collection(db, 'cars'));
+      const cars = [];
+      carsSnapshot.forEach(d => cars.push({ id: d.id, ...d.data() }));
+      
+      const carsWithRent = cars.filter(car => Number(car.dailyRent) > 0);
+      
+      if (carsWithRent.length === 0) {
+        await this.saveProcessingState(today);
+        this.lastProcessedDate = today;
+        return { success: true, reason: 'no_cars_with_rent', entriesAdded: 0 };
+      }
+
+      // معالجة اليوم الحالي
+      const result = await this.processDay(today, carsWithRent);
+      
+      // تحديث تاريخ المعالجة
+      await this.saveProcessingState(today);
+      this.lastProcessedDate = today;
+      
+      // تحديث الذاكرة المؤقتة
+      await this.refreshEntriesCache();
+      
+      if (result.count > 0) {
+        console.log(`✅ تمت معالجة اليوم ${today}: ${result.count} إدخالاً`);
+        showToast(`تم إضافة ${result.count} إيراد يومي - المجموع: ${fmtMoney(result.amount)}`, 'success');
+      }
+      
+      return { 
+        success: true, 
+        reason: 'processed', 
+        entriesAdded: result.count, 
+        totalAmount: result.amount 
+      };
+      
+    } catch (err) {
+      console.error('❌ خطأ في معالجة اليوم الحالي:', err);
+      return { success: false, reason: 'error', error: err };
+    } finally {
+      this.isProcessing = false;
+    }
   }
 }
 
@@ -357,23 +475,28 @@ function setupDailyIncomeScheduler() {
   }
 
   // 1. تهيئة المعالج
-  dailyIncomeProcessor.init().then(() => {
+  dailyIncomeProcessor.init().then(async () => {
     console.log('✅ تم تهيئة معالج الإيراد اليومي');
     
-    // 2. التحقق الأولي بعد 3 ثوان
+    // 2. التحقق والتعويض عن الأيام السابقة بعد 3 ثوان
     setTimeout(async () => {
-      console.log('🔍 التحقق الأولي للإيراد اليومي...');
-      await dailyIncomeProcessor.processDailyIncome();
+      console.log('🔍 التحقق من الأيام السابقة ومعالجتها...');
+      await dailyIncomeProcessor.processDailyIncomeWithCatchUp();
+      
+      // 3. معالجة اليوم الحالي بعد الانتهاء من التعويض
+      setTimeout(async () => {
+        await dailyIncomeProcessor.processCurrentDay();
+      }, 1000);
     }, 3000);
   });
 
-  // 3. التحقق كل 30 دقيقة
+  // 4. التحقق كل 30 دقيقة لمعالجة اليوم الحالي فقط
   dailyIncomeInterval = setInterval(async () => {
     console.log('⏰ تحقق دوري كل 30 دقيقة...');
-    await dailyIncomeProcessor.processDailyIncome();
+    await dailyIncomeProcessor.processCurrentDay();
   }, 30 * 60 * 1000);
 
-  // 4. التحقق عند منتصف الليل (00:05)
+  // 5. التحقق عند منتصف الليل (00:05)
   scheduleMidnightCheck();
 }
 
@@ -385,8 +508,8 @@ function scheduleMidnightCheck() {
   const timeUntilMidnight = nextMidnight - now;
   
   setTimeout(async () => {
-    console.log('🌙 منتصف الليل - معالجة الإيراد اليومي...');
-    await dailyIncomeProcessor.processDailyIncome();
+    console.log('🌙 منتصف الليل - معالجة اليوم السابق...');
+    await dailyIncomeProcessor.processCurrentDay();
     
     // جدولة التحقق التالي
     scheduleMidnightCheck();
@@ -410,11 +533,14 @@ function setupDailyIncomeUI() {
     const controlHTML = `
       <div class="card" id="dailyIncomeControl" style="margin-top: 20px;">
         <h3 style="margin:0 0 12px 0;"><i class="fas fa-calculator"></i> نظام الإيراد اليومي التلقائي</h3>
-        <div class="muted">يضيف الإيراد اليومي لكل سيارة تلقائياً مرة واحدة في اليوم</div>
+        <div class="muted">يضيف الإيراد اليومي لكل سيارة تلقائياً. يقوم بالتعويض عن الأيام السابقة عند الحاجة.</div>
         
         <div style="margin-top: 12px; display: flex; gap: 10px; flex-wrap: wrap;">
           <button id="btnRunDailyIncome" class="btn" style="background: var(--success);">
             <i class="fas fa-play"></i> تشغيل الآن
+          </button>
+          <button id="btnRunCatchUp" class="btn" style="background: var(--accent);">
+            <i class="fas fa-history"></i> التعويض عن الأيام السابقة
           </button>
           <button id="btnCheckDailyStatus" class="btn ghost">
             <i class="fas fa-info-circle"></i> عرض الحالة
@@ -431,10 +557,19 @@ function setupDailyIncomeUI() {
     
     // إضافة event listeners
     l('btnRunDailyIncome').addEventListener('click', async () => {
-      if (confirm('هل تريد تشغيل نظام الإيراد اليومي الآن؟')) {
-        const result = await dailyIncomeProcessor.processDailyIncome();
+      if (confirm('هل تريد تشغيل نظام الإيراد اليومي لليوم الحالي الآن؟')) {
+        const result = await dailyIncomeProcessor.processCurrentDay();
         if (result.success) {
           showToast(`تمت المعالجة بنجاح! ${result.entriesAdded || 0} إدخالاً`, 'success');
+        }
+      }
+    });
+    
+    l('btnRunCatchUp').addEventListener('click', async () => {
+      if (confirm('هل تريد التعويض عن الإيراد اليومي للأيام السابقة؟ سيتم معالجة الأيام منذ آخر معالجة وحتى اليوم.')) {
+        const result = await dailyIncomeProcessor.processDailyIncomeWithCatchUp();
+        if (result.success) {
+          showToast(`تم التعويض عن ${result.daysProcessed || 0} يوم، ${result.entriesAdded || 0} إدخالاً`, 'success');
         }
       }
     });
@@ -463,6 +598,12 @@ async function checkDailyIncomeStatus() {
           <div style="font-weight:800;font-size:16px">${status.lastProcessedDate || 'لم تتم'}</div>
         </div>
         <div class="card">
+          <div class="muted">الأيام المفقودة</div>
+          <div style="font-weight:800;font-size:16px;color:${status.missedDays > 0 ? 'var(--warning)' : 'var(--success)'}">
+            ${status.missedDays} يوم
+          </div>
+        </div>
+        <div class="card">
           <div class="muted">حالة اليوم</div>
           <div style="font-weight:800;font-size:16px;color:${status.isTodayProcessed ? 'var(--success)' : 'var(--warning)'}">
             ${status.isTodayProcessed ? '✅ تمت المعالجة' : '⏳ تحتاج المعالجة'}
@@ -484,24 +625,16 @@ async function checkDailyIncomeStatus() {
           <div style="font-weight:800;font-size:20px">${status.todayEntriesCount}</div>
         </div>
       </div>
+      
+      <div style="margin-top: 16px; padding: 12px; background: #f1f5f9; border-radius: 8px;">
+        <h5>معلومات التعويض:</h5>
+        <ul style="margin: 8px 0; padding-left: 20px;">
+          <li>أقصى عدد من الأيام للتعويض: ${status.maxCatchUpDays} يوم</li>
+          <li>سيتم التعويض تلقائياً عند فتح التطبيق</li>
+          <li>يمكنك التعويض يدوياً باستخدام زر "التعويض عن الأيام السابقة"</li>
+        </ul>
+      </div>
     `;
-    
-    if (status.todayEntriesCount > 0) {
-      statusHTML += `
-        <div style="margin-top: 16px;">
-          <h5>السيارات المعالجة اليوم:</h5>
-          <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px;">
-      `;
-      
-      status.processedCarsToday.forEach(carId => {
-        const car = carsCache.find(c => c.id === carId);
-        if (car) {
-          statusHTML += `<span class="tag in">${car.name}</span>`;
-        }
-      });
-      
-      statusHTML += `</div></div>`;
-    }
     
     contentDiv.innerHTML = statusHTML;
     statusDiv.style.display = 'block';
@@ -514,7 +647,6 @@ async function checkDailyIncomeStatus() {
 
 // ---------- Attach / detach realtime listeners AFTER auth ----------
 function attachRealtimeListeners() {
-  // detach first if any
   detachRealtimeListeners();
 
   // cars
@@ -702,10 +834,11 @@ function renderEntriesTable(){
     rows.forEach(e=>{
       const car = carsCache.find(c=>c.id===e.carId);
       const typeTag = e.type==='income' ? '<span class="tag in"><i class="fas fa-arrow-up"></i> Income</span>' : '<span class="tag out"><i class="fas fa-arrow-down"></i> Expense</span>';
+      const catchUpBadge = e.catchUpEntry ? ' <span class="tag" style="background:#f59e0b;color:white;font-size:10px;">تعويض</span>' : '';
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td class="ltr">${e.date}</td>
-        <td>${escapeHtml(car?car.name:'-')}</td>
+        <td>${escapeHtml(car?car.name:'-')}${catchUpBadge}</td>
         <td>${typeTag}</td>
         <td>${escapeHtml(e.category||'')}</td>
         <td class="ltr" style="font-weight:800">${fmtMoney(e.amount)}</td>
