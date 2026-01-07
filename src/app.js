@@ -855,23 +855,90 @@ function renderReportSummary(){
   const carId = l('reportCar').value;
   const from = l('reportFrom').value;
   const to = l('reportTo').value;
+  
+  // ترتيب البيانات حسب التاريخ تصاعدياً (من الأقدم للأحدث)
   let rows = entriesCache.slice();
   if(carId && carId!=='all') rows = rows.filter(r=>r.carId===carId);
   if(from) rows = rows.filter(r=>r.date>=from);
   if(to) rows = rows.filter(r=>r.date<=to);
+  
+  // التعديل 3: ترتيب البيانات حسب التاريخ تصاعدياً
+  rows.sort((a, b) => new Date(a.date) - new Date(b.date));
+  
   const income = rows.filter(r=>r.type==='income').reduce((s,r)=>s+Number(r.amount),0);
   const expense = rows.filter(r=>r.type==='expense').reduce((s,r)=>s+Number(r.amount),0);
   const net = income - expense;
+  
+  // التعديل 1: حساب إجمالي سعر السيارات ونسبة استرجاع رأس المال
+  let totalCarsPrice = 0;
+  if (carId && carId !== 'all') {
+    // إذا تم اختيار سيارة واحدة
+    const selectedCar = carsCache.find(c => c.id === carId);
+    totalCarsPrice = selectedCar ? Number(selectedCar.price || 0) : 0;
+  } else {
+    // إذا تم اختيار جميع السيارات
+    totalCarsPrice = carsCache.reduce((sum, car) => sum + Number(car.price || 0), 0);
+  }
+  
+  // حساب نسبة استرجاع رأس المال (نسبة صافي الدخل إلى سعر السيارة)
+  let roiPercentage = 0;
+  if (totalCarsPrice > 0 && net > 0) {
+    roiPercentage = (net / totalCarsPrice) * 100;
+  }
+  
   const out = l('reportSummary');
-  out.innerHTML = `<div style="display:flex;gap:16px; flex-wrap: wrap;">
-    <div class="card" style="flex:1; min-width: 150px;"><div class="muted">Revenue</div><div style="font-weight:800;font-size:20px">${fmtMoney(income)}</div></div>
-    <div class="card" style="flex:1; min-width: 150px;"><div class="muted">Expenses</div><div style="font-weight:800;font-size:20px">${fmtMoney(expense)}</div></div>
-    <div class="card" style="flex:1; min-width: 150px;"><div class="muted">Net</div><div style="font-weight:800;font-size:20px">${fmtMoney(net)}</div></div>
+  out.innerHTML = `<div style="display:flex;gap:16px; flex-wrap: wrap; margin-bottom: 20px;">
+    <div class="card" style="flex:1; min-width: 150px;">
+      <div class="muted">Revenue</div>
+      <div style="font-weight:800;font-size:20px">${fmtMoney(income)}</div>
     </div>
-    <div style="margin-top:12px">
-      <table style="width:100%"><thead><tr><th>Date</th><th>Car</th><th>Type</th><th>Category</th><th>Amount</th></tr></thead>
-      <tbody>${rows.map(r=>`<tr><td class="ltr">${r.date}</td><td>${escapeHtml((carsCache.find(c=>c.id===r.carId)||{}).name||'-')}</td><td>${r.type === 'income' ? 'Income' : 'Expense'}</td><td>${escapeHtml(r.category)}</td><td class="ltr" style="font-weight:700">${fmtMoney(r.amount)}</td></tr>`).join('')}</tbody></table>
-    </div>`;
+    <div class="card" style="flex:1; min-width: 150px;">
+      <div class="muted">Expenses</div>
+      <div style="font-weight:800;font-size:20px">${fmtMoney(expense)}</div>
+    </div>
+    <div class="card" style="flex:1; min-width: 150px;">
+      <div class="muted">Net</div>
+      <div style="font-weight:800;font-size:20px">${fmtMoney(net)}</div>
+    </div>
+    <div class="card" style="flex:1; min-width: 150px;">
+      <div class="muted">Cars Value / ROI</div>
+      <div style="font-weight:800;font-size:20px">${fmtMoney(totalCarsPrice)}</div>
+      <div style="font-size:14px; color:${roiPercentage > 0 ? '#10b981' : '#ef4444'}; font-weight:600;">
+        ${roiPercentage.toFixed(2)}% ROI
+      </div>
+    </div>
+  </div>
+  <div style="margin-top:12px">
+    <table style="width:100%">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Car</th>
+          <th>Type</th>
+          <th>Category</th>
+          <th>Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map(r=>{
+          const carName = escapeHtml((carsCache.find(c=>c.id===r.carId)||{}).name||'-');
+          // التعديل 2: تلوين نوع المدخل
+          const typeColor = r.type === 'income' ? '#10b981' : '#ef4444';
+          const typeText = r.type === 'income' ? 
+            '<span style="color:#10b981; font-weight:600;">Income</span>' : 
+            '<span style="color:#ef4444; font-weight:600;">Expense</span>';
+          
+          return `<tr>
+            <td class="ltr">${r.date}</td>
+            <td>${carName}</td>
+            <td>${typeText}</td>
+            <td>${escapeHtml(r.category)}</td>
+            <td class="ltr" style="font-weight:700">${fmtMoney(r.amount)}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+  </div>`;
 }
 
 function renderUsers(){
