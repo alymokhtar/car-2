@@ -75,6 +75,100 @@ function showToast(message, type = 'info') {
   }, 3000);
 }
 
+// ---------- PDF Export Functions ----------
+async function loadPDFLibraries() {
+  return new Promise((resolve, reject) => {
+    // تحميل html2canvas إذا لم تكن موجودة
+    if (typeof html2canvas === 'undefined') {
+      const script1 = document.createElement('script');
+      script1.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+      script1.onload = () => {
+        // تحميل jsPDF إذا لم تكن موجودة
+        if (typeof jspdf === 'undefined') {
+          const script2 = document.createElement('script');
+          script2.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+          script2.onload = () => {
+            // تعريف jspdf في النطاق العام
+            window.jspdf = window.jspdf || window.jspdf.jsPDF;
+            resolve();
+          };
+          script2.onerror = reject;
+          document.head.appendChild(script2);
+        } else {
+          resolve();
+        }
+      };
+      script1.onerror = reject;
+      document.head.appendChild(script1);
+    } else if (typeof jspdf === 'undefined') {
+      const script2 = document.createElement('script');
+      script2.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+      script2.onload = () => {
+        window.jspdf = window.jspdf || window.jspdf.jsPDF;
+        resolve();
+      };
+      script2.onerror = reject;
+      document.head.appendChild(script2);
+    } else {
+      resolve();
+    }
+  });
+}
+
+async function exportToPDF() {
+  try {
+    const element = document.getElementById('reportSummary');
+    if (!element || element.innerHTML.includes('No data') || element.innerHTML.trim() === '') {
+      showToast('لا يوجد تقرير لتصديره. يرجى إنشاء تقرير أولاً.', 'warning');
+      return;
+    }
+
+    // التحقق من وجود المكتبات المطلوبة
+    if (typeof html2canvas === 'undefined' || typeof jspdf === 'undefined') {
+      showToast('جاري تحميل مكتبات PDF...', 'info');
+      await loadPDFLibraries();
+    }
+
+    showToast('جاري إنشاء PDF...', 'info');
+
+    // استخدام html2canvas لالتقاط العنصر
+    const canvas = await html2canvas(element, {
+      scale: 2,
+      useCORS: true,
+      logging: false,
+      backgroundColor: document.body.classList.contains('dark') ? '#071024' : '#ffffff'
+    });
+
+    const imgData = canvas.toDataURL('image/png');
+    const pdf = new jspdf.jsPDF('p', 'mm', 'a4');
+
+    const imgWidth = 190;
+    const pageHeight = pdf.internal.pageSize.height;
+    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+    let heightLeft = imgHeight;
+    let position = 10;
+
+    pdf.addImage(imgData, 'PNG', 10, position, imgWidth, imgHeight);
+    heightLeft -= pageHeight;
+
+    // إضافة صفحات إضافية إذا كان المحتوى طويلاً
+    while (heightLeft >= 0) {
+      position = heightLeft - imgHeight;
+      pdf.addPage();
+      pdf.addImage(imgData, 'PNG', 10, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+    }
+
+    // حفظ الملف
+    const fileName = `car_rental_report_${new Date().toISOString().slice(0,10)}.pdf`;
+    pdf.save(fileName);
+    showToast('تم تصدير التقرير إلى PDF بنجاح', 'success');
+  } catch (error) {
+    console.error('خطأ في تصدير PDF:', error);
+    showToast('فشل تصدير PDF: ' + error.message, 'error');
+  }
+}
+
 // ---------- Daily Income System (IMPROVED WITH CATCH-UP FEATURE) ----------
 class DailyIncomeProcessor {
   constructor() {
@@ -645,6 +739,34 @@ async function checkDailyIncomeStatus() {
   }
 }
 
+// ---------- Export PDF Button Setup ----------
+function setupExportPDFButton() {
+  // البحث عن حاوية أزرار التصدير في تبويب التقارير
+  const reportTab = document.getElementById('tab-reports');
+  if (!reportTab) return;
+
+  // البحث عن زر Export CSV للحصول على الحاوية
+  const btnCSV = l('btnExportCSVReport');
+  if (!btnCSV) return;
+
+  const container = btnCSV.parentElement;
+  if (!container) return;
+
+  // التحقق من وجود زر PDF مسبقاً
+  let btnPDF = document.getElementById('btnExportPDF');
+  if (!btnPDF) {
+    btnPDF = document.createElement('button');
+    btnPDF.id = 'btnExportPDF';
+    btnPDF.className = 'btn';
+    btnPDF.innerHTML = '<i class="fas fa-file-pdf"></i> Export PDF';
+    btnPDF.style.background = 'linear-gradient(135deg, #e53935, #c62828)';
+    btnPDF.style.color = 'white';
+    container.appendChild(btnPDF);
+  }
+
+  btnPDF.addEventListener('click', exportToPDF);
+}
+
 // ---------- Attach / detach realtime listeners AFTER auth ----------
 function attachRealtimeListeners() {
   detachRealtimeListeners();
@@ -834,7 +956,7 @@ function renderEntriesTable(){
     rows.forEach(e=>{
       const car = carsCache.find(c=>c.id===e.carId);
       const typeTag = e.type==='income' ? '<span class="tag in"><i class="fas fa-arrow-up"></i> Income</span>' : '<span class="tag out"><i class="fas fa-arrow-down"></i> Expense</span>';
-      const catchUpBadge = e.catchUpEntry ? ' <span class="tag" style="background:#f59e0b;color:white;font-size:10px;">تعويض</span>' : '';
+      const catchUpBadge = e.catchUpEntry ? ' <span class="tag" style="background:#f59e0b;color:white;font-size:10px;">income</span>' : '';
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td class="ltr">${e.date}</td>
@@ -1350,6 +1472,9 @@ if (topbarSignOut) {
 function initialUI(){
   l('entryDate').value = new Date().toISOString().slice(0,10);
   showTab('dashboard');
+  
+  // إعداد زر Export PDF
+  setupExportPDFButton();
 }
 initialUI();
 
