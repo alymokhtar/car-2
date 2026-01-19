@@ -956,7 +956,7 @@ function renderEntriesTable(){
     rows.forEach(e=>{
       const car = carsCache.find(c=>c.id===e.carId);
       const typeTag = e.type==='income' ? '<span class="tag in"><i class="fas fa-arrow-up"></i> Income</span>' : '<span class="tag out"><i class="fas fa-arrow-down"></i> Expense</span>';
-      const catchUpBadge = e.catchUpEntry ? ' <span class="tag" style="background:#f59e0b;color:white;font-size:10px;">income</span>' : '';
+      const catchUpBadge = e.catchUpEntry ? ' <span style="background:transparent;color:white;font-size:10px;"></span>' : '';
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td class="ltr">${e.date}</td>
