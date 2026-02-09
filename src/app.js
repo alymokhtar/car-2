@@ -76,40 +76,49 @@ function showToast(message, type = 'info') {
 }
 
 // ---------- PDF Export Functions ----------
+// ---------- PDF Export Functions ----------
 async function loadPDFLibraries() {
   return new Promise((resolve, reject) => {
-    // تحميل html2canvas إذا لم تكن موجودة
-    if (typeof html2canvas === 'undefined') {
+    // تحميل pdfmake إذا لم تكن موجودة
+    if (typeof pdfMake === 'undefined') {
+      console.log('Loading pdfmake library...');
       const script1 = document.createElement('script');
-      script1.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+      script1.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.71/pdfmake.min.js';
       script1.onload = () => {
-        // تحميل jsPDF إذا لم تكن موجودة
-        if (typeof jspdf === 'undefined') {
-          const script2 = document.createElement('script');
-          script2.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
-          script2.onload = () => {
-            // تعريف jspdf في النطاق العام
-            window.jspdf = window.jspdf || window.jspdf.jsPDF;
-            resolve();
-          };
-          script2.onerror = reject;
-          document.head.appendChild(script2);
-        } else {
+        console.log('pdfmake loaded, now loading vfs_fonts...');
+        // تحميل vfs_fonts للخطوط
+        const script2 = document.createElement('script');
+        script2.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.71/vfs_fonts.js';
+        script2.onload = () => {
+          console.log('pdfmake libraries loaded successfully');
           resolve();
-        }
+        };
+        script2.onerror = (err) => {
+          console.error('Failed to load vfs_fonts:', err);
+          reject(err);
+        };
+        document.head.appendChild(script2);
       };
-      script1.onerror = reject;
+      script1.onerror = (err) => {
+        console.error('Failed to load pdfmake:', err);
+        reject(err);
+      };
       document.head.appendChild(script1);
-    } else if (typeof jspdf === 'undefined') {
+    } else if (typeof pdfMake.vfs === 'undefined') {
+      console.log('pdfmake loaded but vfs_fonts missing, loading vfs_fonts...');
       const script2 = document.createElement('script');
-      script2.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+      script2.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.71/vfs_fonts.js';
       script2.onload = () => {
-        window.jspdf = window.jspdf || window.jspdf.jsPDF;
+        console.log('vfs_fonts loaded successfully');
         resolve();
       };
-      script2.onerror = reject;
+      script2.onerror = (err) => {
+        console.error('Failed to load vfs_fonts:', err);
+        reject(err);
+      };
       document.head.appendChild(script2);
     } else {
+      console.log('pdfmake libraries already loaded');
       resolve();
     }
   });
@@ -117,55 +126,283 @@ async function loadPDFLibraries() {
 
 async function exportToPDF() {
   try {
-    const element = document.getElementById('reportSummary');
-    if (!element || element.innerHTML.includes('No data') || element.innerHTML.trim() === '') {
-      showToast('لا يوجد تقرير لتصديره. يرجى إنشاء تقرير أولاً.', 'warning');
+    console.log('Starting PDF export...');
+    
+    // الحصول على بيانات التقرير
+    const carId = l('reportCar').value;
+    const from = l('reportFrom').value;
+    const to = l('reportTo').value;
+    
+    // جلب البيانات وتصفيتها
+    let rows = entriesCache.slice();
+    if(carId && carId!=='all') rows = rows.filter(r=>r.carId===carId);
+    if(from) rows = rows.filter(r=>r.date>=from);
+    if(to) rows = rows.filter(r=>r.date<=to);
+    
+    // ترتيب البيانات حسب التاريخ تصاعدياً
+    rows.sort((a, b) => new Date(a.date) - new Date(b.date));
+    
+    // إزالة التكرارات بناءً على المعرف الفريد
+    const uniqueRows = [];
+    const seenIds = new Set();
+    rows.forEach(row => {
+      if (!seenIds.has(row.id)) {
+        seenIds.add(row.id);
+        uniqueRows.push(row);
+      }
+    });
+    
+    // استخدام الصفوف الفريدة فقط
+    rows = uniqueRows;
+    
+    if (rows.length === 0) {
+      showToast('No data to export', 'warning');
       return;
     }
 
-    // التحقق من وجود المكتبات المطلوبة
-    if (typeof html2canvas === 'undefined' || typeof jspdf === 'undefined') {
-      showToast('جاري تحميل مكتبات PDF...', 'info');
-      await loadPDFLibraries();
+    // حساب الإحصائيات
+    const income = rows.filter(r=>r.type==='income').reduce((s,r)=>s+Number(r.amount),0);
+    const expense = rows.filter(r=>r.type==='expense').reduce((s,r)=>s+Number(r.amount),0);
+    const net = income - expense;
+    
+    // حساب إجمالي سعر السيارات
+    let totalCarsPrice = 0;
+    if (carId && carId !== 'all') {
+      const selectedCar = carsCache.find(c => c.id === carId);
+      totalCarsPrice = selectedCar ? Number(selectedCar.price || 0) : 0;
+    } else {
+      totalCarsPrice = carsCache.reduce((sum, car) => sum + Number(car.price || 0), 0);
+    }
+    
+    // حساب نسبة العائد
+    let roiPercentage = 0;
+    if (totalCarsPrice > 0 && net > 0) {
+      roiPercentage = (net / totalCarsPrice) * 100;
     }
 
-    showToast('جاري إنشاء PDF...', 'info');
+    showToast('Creating PDF report...', 'info');
+    
+    // التحقق من وجود المكتبات المطلوبة
+    if (typeof pdfMake === 'undefined' || typeof pdfMake.vfs === 'undefined') {
+      console.log('PDF libraries not found, loading...');
+      try {
+        await loadPDFLibraries();
+        console.log('PDF libraries loaded successfully');
+      } catch (err) {
+        console.error('Failed to load PDF libraries:', err);
+        showToast('Failed to load PDF libraries. Please try again.', 'error');
+        return;
+      }
+    }
 
-    // استخدام html2canvas لالتقاط العنصر
-    const canvas = await html2canvas(element, {
-      scale: 2,
-      useCORS: true,
-      logging: false,
-      backgroundColor: document.body.classList.contains('dark') ? '#071024' : '#ffffff'
+    // إعداد بيانات الجدول
+    const tableBody = rows.map(row => {
+      const car = carsCache.find(c => c.id === row.carId);
+      const typeText = row.type === 'income' ? 'Income' : 'Expense';
+      const typeColor = row.type === 'income' ? '#10b981' : '#ef4444';
+      
+      return [
+        { text: row.date, fontSize: 9 },
+        { text: car ? car.name : '-', fontSize: 9 },
+        { text: typeText, fontSize: 9, color: typeColor },
+        { text: row.category || '-', fontSize: 9 },
+        { text: fmtMoney(row.amount), fontSize: 9, bold: true }
+      ];
     });
 
-    const imgData = canvas.toDataURL('image/png');
-    const pdf = new jspdf.jsPDF('p', 'mm', 'a4');
+    // تعريف مستند PDF مع الخطوط
+    const docDefinition = {
+      pageSize: 'A4',
+      pageOrientation: 'portrait',
+      pageMargins: [40, 60, 40, 60],
+      // تعريف الخطوط - استخدام الخطوط المتاحة في vfs_fonts
+      fonts: {
+        Roboto: {
+          normal: 'Roboto-Regular.ttf',
+          bold: 'Roboto-Medium.ttf',
+          italics: 'Roboto-Italic.ttf',
+          bolditalics: 'Roboto-MediumItalic.ttf'
+        }
+      },
+      defaultStyle: {
+        font: 'Roboto', // استخدام Roboto بدلاً من Helvetica
+        fontSize: 12
+      },
+      content: [
+        // العنوان الرئيسي
+        {
+          text: 'Ward Cars Report',
+          style: 'header',
+          alignment: 'center',
+          margin: [0, 0, 0, 20]
+        },
+        
+        // معلومات التقرير
+        {
+          columns: [
+            {
+              text: `Period: ${from || 'Start'} - ${to || 'End'}`,
+              fontSize: 10,
+              color: '#64748b'
+            },
+            {
+              text: `Report Date: ${new Date().toLocaleDateString()}`,
+              fontSize: 10,
+              color: '#64748b',
+              alignment: 'right'
+            }
+          ],
+          margin: [0, 0, 0, 20]
+        },
+        
+        // الإحصائيات
+        {
+          text: 'Statistics',
+          style: 'subheader',
+          margin: [0, 0, 0, 10]
+        },
+        
+        {
+          columns: [
+            {
+              stack: [
+                { text: 'Total Income:', fontSize: 11, color: '#0e7490' },
+                { text: fmtMoney(income), fontSize: 16, bold: true, color: '#0369a1', margin: [0, 2, 0, 10] },
+                
+                { text: 'Total Expenses:', fontSize: 11, color: '#b91c1c' },
+                { text: fmtMoney(expense), fontSize: 16, bold: true, color: '#dc2626', margin: [0, 2, 0, 10] },
+              ],
+              width: '50%'
+            },
+            {
+              stack: [
+                { text: 'Net Profit:', fontSize: 11, color: '#047857' },
+                { text: fmtMoney(net), fontSize: 16, bold: true, color: '#059669', margin: [0, 2, 0, 10] },
+                
+                { text: 'Cars Value:', fontSize: 11, color: '#7c3aed' },
+                { text: fmtMoney(totalCarsPrice), fontSize: 16, bold: true, color: '#7c3aed', margin: [0, 2, 0, 5] },
+                { 
+                  text: `ROI: ${roiPercentage.toFixed(2)}%`, 
+                  fontSize: 12, 
+                  color: roiPercentage > 0 ? '#10b981' : '#ef4444',
+                  bold: true 
+                },
+              ],
+              width: '50%'
+            }
+          ],
+          margin: [0, 0, 0, 25]
+        },
+        
+        // جدول التفاصيل
+        {
+          text: `Transaction Details (${rows.length} transactions)`,
+          style: 'subheader',
+          margin: [0, 0, 0, 10]
+        },
+        
+        {
+          table: {
+            headerRows: 1,
+            widths: ['15%', '25%', '15%', '20%', '25%'],
+            body: [
+              // رأس الجدول
+              [
+                { text: 'Date', style: 'tableHeader', bold: true, fontSize: 11 },
+                { text: 'Car', style: 'tableHeader', bold: true, fontSize: 11 },
+                { text: 'Type', style: 'tableHeader', bold: true, fontSize: 11 },
+                { text: 'Category', style: 'tableHeader', bold: true, fontSize: 11 },
+                { text: 'Amount', style: 'tableHeader', bold: true, fontSize: 11 }
+              ],
+              // بيانات الجدول
+              ...tableBody
+            ]
+          },
+          layout: {
+            fillColor: function(rowIndex) {
+              return (rowIndex % 2 === 0) ? '#f8fafc' : null;
+            },
+            hLineWidth: function(i, node) {
+              return (i === 0 || i === node.table.body.length) ? 1 : 0.5;
+            },
+            vLineWidth: function() {
+              return 0.5;
+            },
+            hLineColor: function() {
+              return '#e2e8f0';
+            },
+            vLineColor: function() {
+              return '#e2e8f0';
+            },
+            paddingLeft: function() {
+              return 8;
+            },
+            paddingRight: function() {
+              return 8;
+            },
+            paddingTop: function() {
+              return 6;
+            },
+            paddingBottom: function() {
+              return 6;
+            }
+          }
+        },
+        
+        // التذييل
+        {
+          text: [
+            { text: 'Generated automatically by "Aly Mokhtar" Management System\n', fontSize: 9, color: '#94a3b8' },
+            { text: `© ${new Date().getFullYear()} Car Rental System - All rights reserved`, fontSize: 9, color: '#94a3b8' }
+          ],
+          alignment: 'center',
+          margin: [0, 30, 0, 0]
+        }
+      ],
+      styles: {
+        header: {
+          fontSize: 24,
+          bold: true,
+          color: '#2c3e50'
+        },
+        subheader: {
+          fontSize: 16,
+          bold: true,
+          color: '#475569'
+        },
+        tableHeader: {
+          bold: true,
+          fontSize: 11,
+          color: '#475569',
+          fillColor: '#f1f5f9'
+        }
+      }
+    };
 
-    const imgWidth = 190;
-    const pageHeight = pdf.internal.pageSize.height;
-    const imgHeight = (canvas.height * imgWidth) / canvas.width;
-    let heightLeft = imgHeight;
-    let position = 10;
-
-    pdf.addImage(imgData, 'PNG', 10, position, imgWidth, imgHeight);
-    heightLeft -= pageHeight;
-
-    // إضافة صفحات إضافية إذا كان المحتوى طويلاً
-    while (heightLeft >= 0) {
-      position = heightLeft - imgHeight;
-      pdf.addPage();
-      pdf.addImage(imgData, 'PNG', 10, position, imgWidth, imgHeight);
-      heightLeft -= pageHeight;
+    console.log('Creating PDF document...');
+    
+    // إنشاء وتنزيل ملف PDF
+    try {
+      pdfMake.createPdf(docDefinition).download(`car_rental_report_${new Date().toISOString().slice(0,10)}.pdf`);
+      console.log('PDF created and download initiated');
+      showToast('PDF report exported successfully', 'success');
+    } catch (pdfError) {
+      console.error('PDF creation error:', pdfError);
+      showToast('Failed to create PDF. Please try again.', 'error');
+      
+      // محاولة بديلة: استخدام فتح في نافذة جديدة
+      try {
+        pdfMake.createPdf(docDefinition).open();
+        showToast('PDF opened in new window', 'info');
+      } catch (openError) {
+        console.error('Failed to open PDF:', openError);
+        showToast('Cannot create PDF. Check browser console for details.', 'error');
+      }
     }
-
-    // حفظ الملف
-    const fileName = `car_rental_report_${new Date().toISOString().slice(0,10)}.pdf`;
-    pdf.save(fileName);
-    showToast('تم تصدير التقرير إلى PDF بنجاح', 'success');
+    
   } catch (error) {
-    console.error('خطأ في تصدير PDF:', error);
-    showToast('فشل تصدير PDF: ' + error.message, 'error');
+    console.error('PDF export error:', error);
+    showToast('Failed to export PDF: ' + error.message, 'error');
   }
 }
 
@@ -313,14 +550,14 @@ class DailyIncomeProcessor {
         console.log(`🎉 تمت المعالجة بنجاح! ${totalEntriesAdded} إدخالاً - المجموع: ${totalAmount}`);
         
         showToast(
-          `تم إضافة ${totalEntriesAdded} إيراد يومي (لـ ${datesToProcess.length} يوم) - المجموع: ${fmtMoney(totalAmount)}`, 
+          `Added ${totalEntriesAdded} daily income entries (for ${datesToProcess.length} days) - Total: ${fmtMoney(totalAmount)}`, 
           'success'
         );
 
         // تسجيل العملية
         await this.logCatchUpProcessing(datesToProcess, totalEntriesAdded, totalAmount);
       } else {
-        showToast('تم التحقق من جميع الأيام، لا توجد إيرادات جديدة لإضافتها', 'info');
+        showToast('All days checked, no new income to add', 'info');
       }
 
       return { 
@@ -333,7 +570,7 @@ class DailyIncomeProcessor {
 
     } catch (err) {
       console.error('❌ خطأ عام في معالجة الإيراد اليومي:', err);
-      showToast('فشل إضافة الإيراد اليومي: ' + err.message, 'error');
+      showToast('Failed to add daily income: ' + err.message, 'error');
       return { success: false, reason: 'error', error: err };
     } finally {
       this.isProcessing = false;
@@ -382,7 +619,7 @@ class DailyIncomeProcessor {
         collection(db, 'entries'),
         where('carId', '==', car.id),
         where('date', '==', date),
-        where('category', '==', 'Daily Automated Rent')
+        where('category', '==', 'Daily Rent')
       );
       
       const querySnapshot = await getDocs(entriesQuery);
@@ -396,8 +633,8 @@ class DailyIncomeProcessor {
         date: date,
         type: 'income',
         amount: Number(car.dailyRent) || 0,
-        category: 'Daily Automated Rent',
-        note: `إيراد يومي تلقائي - ${car.name}`,
+        category: 'Daily Rent',
+        note: `Daily automated income - ${car.name}`,
         autoGenerated: true,
         timestamp: new Date().toISOString(),
         processedAt: new Date().toISOString(),
@@ -416,7 +653,7 @@ class DailyIncomeProcessor {
       const entriesQuery = query(
         collection(db, 'entries'),
         where('date', '==', date),
-        where('category', '==', 'Daily Automated Rent')
+        where('category', '==', 'Daily Rent')
       );
       
       const snapshot = await getDocs(entriesQuery);
@@ -535,7 +772,7 @@ class DailyIncomeProcessor {
       
       if (result.count > 0) {
         console.log(`✅ تمت معالجة اليوم ${today}: ${result.count} إدخالاً`);
-        showToast(`تم إضافة ${result.count} إيراد يومي - المجموع: ${fmtMoney(result.amount)}`, 'success');
+        showToast(`Added ${result.count} daily income entries - Total: ${fmtMoney(result.amount)}`, 'success');
       }
       
       return { 
@@ -561,7 +798,7 @@ const dailyIncomeProcessor = new DailyIncomeProcessor();
 let dailyIncomeInterval = null;
 
 function setupDailyIncomeScheduler() {
-  console.log('🕒 جاري إعداد جدولة الإيراد اليومي...');
+  console.log('🕒 Setting up daily income scheduler...');
   
   // إيقاف أي جدولة سابقة
   if (dailyIncomeInterval) {
@@ -570,11 +807,11 @@ function setupDailyIncomeScheduler() {
 
   // 1. تهيئة المعالج
   dailyIncomeProcessor.init().then(async () => {
-    console.log('✅ تم تهيئة معالج الإيراد اليومي');
+    console.log('✅ Daily income processor initialized');
     
     // 2. التحقق والتعويض عن الأيام السابقة بعد 3 ثوان
     setTimeout(async () => {
-      console.log('🔍 التحقق من الأيام السابقة ومعالجتها...');
+      console.log('🔍 Checking and processing previous days...');
       await dailyIncomeProcessor.processDailyIncomeWithCatchUp();
       
       // 3. معالجة اليوم الحالي بعد الانتهاء من التعويض
@@ -586,7 +823,7 @@ function setupDailyIncomeScheduler() {
 
   // 4. التحقق كل 30 دقيقة لمعالجة اليوم الحالي فقط
   dailyIncomeInterval = setInterval(async () => {
-    console.log('⏰ تحقق دوري كل 30 دقيقة...');
+    console.log('⏰ Regular check every 30 minutes...');
     await dailyIncomeProcessor.processCurrentDay();
   }, 30 * 60 * 1000);
 
@@ -602,21 +839,21 @@ function scheduleMidnightCheck() {
   const timeUntilMidnight = nextMidnight - now;
   
   setTimeout(async () => {
-    console.log('🌙 منتصف الليل - معالجة اليوم السابق...');
+    console.log('🌙 Midnight - processing previous day...');
     await dailyIncomeProcessor.processCurrentDay();
     
     // جدولة التحقق التالي
     scheduleMidnightCheck();
   }, timeUntilMidnight);
   
-  console.log(`⏳ تم جدولة التحقق القادم في: ${new Date(Date.now() + timeUntilMidnight).toLocaleString()}`);
+  console.log(`⏳ Next check scheduled at: ${new Date(Date.now() + timeUntilMidnight).toLocaleString()}`);
 }
 
 function stopDailyIncomeScheduler() {
   if (dailyIncomeInterval) {
     clearInterval(dailyIncomeInterval);
     dailyIncomeInterval = null;
-    console.log('🛑 تم إوقف جدولة الإيراد اليومي');
+    console.log('🛑 Daily income scheduler stopped');
   }
 }
 
@@ -626,18 +863,18 @@ function setupDailyIncomeUI() {
   if (dashboardTab && !document.getElementById('dailyIncomeControl')) {
     const controlHTML = `
       <div class="card" id="dailyIncomeControl" style="margin-top: 20px;">
-        <h3 style="margin:0 0 12px 0;"><i class="fas fa-calculator"></i> نظام الإيراد اليومي التلقائي</h3>
-        <div class="muted">يضيف الإيراد اليومي لكل سيارة تلقائياً. يقوم بالتعويض عن الأيام السابقة عند الحاجة.</div>
+        <h3 style="margin:0 0 12px 0;"><i class="fas fa-calculator"></i> Automated Daily Income System</h3>
+        <div class="muted">Automatically adds daily income for each car. Can catch up on missed days.</div>
         
         <div style="margin-top: 12px; display: flex; gap: 10px; flex-wrap: wrap;">
           <button id="btnRunDailyIncome" class="btn" style="background: var(--success);">
-            <i class="fas fa-play"></i> تشغيل الآن
+            <i class="fas fa-play"></i> Run Now
           </button>
           <button id="btnRunCatchUp" class="btn" style="background: var(--accent);">
-            <i class="fas fa-history"></i> التعويض عن الأيام السابقة
+            <i class="fas fa-history"></i> Catch Up Days
           </button>
           <button id="btnCheckDailyStatus" class="btn ghost">
-            <i class="fas fa-info-circle"></i> عرض الحالة
+            <i class="fas fa-info-circle"></i> View Status
           </button>
         </div>
         
@@ -651,19 +888,19 @@ function setupDailyIncomeUI() {
     
     // إضافة event listeners
     l('btnRunDailyIncome').addEventListener('click', async () => {
-      if (confirm('هل تريد تشغيل نظام الإيراد اليومي لليوم الحالي الآن؟')) {
+      if (confirm('Run daily income system for today?')) {
         const result = await dailyIncomeProcessor.processCurrentDay();
         if (result.success) {
-          showToast(`تمت المعالجة بنجاح! ${result.entriesAdded || 0} إدخالاً`, 'success');
+          showToast(`Processed successfully! ${result.entriesAdded || 0} entries added`, 'success');
         }
       }
     });
     
     l('btnRunCatchUp').addEventListener('click', async () => {
-      if (confirm('هل تريد التعويض عن الإيراد اليومي للأيام السابقة؟ سيتم معالجة الأيام منذ آخر معالجة وحتى اليوم.')) {
+      if (confirm('Catch up on missed daily income for previous days?')) {
         const result = await dailyIncomeProcessor.processDailyIncomeWithCatchUp();
         if (result.success) {
-          showToast(`تم التعويض عن ${result.daysProcessed || 0} يوم، ${result.entriesAdded || 0} إدخالاً`, 'success');
+          showToast(`Caught up ${result.daysProcessed || 0} days, ${result.entriesAdded || 0} entries`, 'success');
         }
       }
     });
@@ -681,51 +918,51 @@ async function checkDailyIncomeStatus() {
     const contentDiv = l('statusContent');
     
     let statusHTML = `
-      <h4><i class="fas fa-chart-line"></i> حالة نظام الإيراد اليومي</h4>
+      <h4><i class="fas fa-chart-line"></i> Daily Income System Status</h4>
       <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 12px;">
         <div class="card">
-          <div class="muted">تاريخ اليوم</div>
+          <div class="muted">Today's Date</div>
           <div style="font-weight:800;font-size:16px">${status.today}</div>
         </div>
         <div class="card">
-          <div class="muted">آخر معالجة</div>
-          <div style="font-weight:800;font-size:16px">${status.lastProcessedDate || 'لم تتم'}</div>
+          <div class="muted">Last Processed</div>
+          <div style="font-weight:800;font-size:16px">${status.lastProcessedDate || 'Not processed'}</div>
         </div>
         <div class="card">
-          <div class="muted">الأيام المفقودة</div>
+          <div class="muted">Missed Days</div>
           <div style="font-weight:800;font-size:16px;color:${status.missedDays > 0 ? 'var(--warning)' : 'var(--success)'}">
-            ${status.missedDays} يوم
+            ${status.missedDays} days
           </div>
         </div>
         <div class="card">
-          <div class="muted">حالة اليوم</div>
+          <div class="muted">Today's Status</div>
           <div style="font-weight:800;font-size:16px;color:${status.isTodayProcessed ? 'var(--success)' : 'var(--warning)'}">
-            ${status.isTodayProcessed ? '✅ تمت المعالجة' : '⏳ تحتاج المعالجة'}
+            ${status.isTodayProcessed ? '✅ Processed' : '⏳ Needs processing'}
           </div>
         </div>
       </div>
       
       <div style="margin-top: 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px;">
         <div class="card">
-          <div class="muted">عدد السيارات</div>
+          <div class="muted">Total Cars</div>
           <div style="font-weight:800;font-size:20px">${status.carsCount}</div>
         </div>
         <div class="card">
-          <div class="muted">سيارات بالإيجار</div>
+          <div class="muted">Cars with Rent</div>
           <div style="font-weight:800;font-size:20px">${status.carsWithDailyRent}</div>
         </div>
         <div class="card">
-          <div class="muted">إيرادات اليوم</div>
+          <div class="muted">Today's Entries</div>
           <div style="font-weight:800;font-size:20px">${status.todayEntriesCount}</div>
         </div>
       </div>
       
       <div style="margin-top: 16px; padding: 12px; background: #f1f5f9; border-radius: 8px;">
-        <h5>معلومات التعويض:</h5>
+        <h5>Catch-up Info:</h5>
         <ul style="margin: 8px 0; padding-left: 20px;">
-          <li>أقصى عدد من الأيام للتعويض: ${status.maxCatchUpDays} يوم</li>
-          <li>سيتم التعويض تلقائياً عند فتح التطبيق</li>
-          <li>يمكنك التعويض يدوياً باستخدام زر "التعويض عن الأيام السابقة"</li>
+          <li>Max catch-up days: ${status.maxCatchUpDays} days</li>
+          <li>Automatic catch-up when app opens</li>
+          <li>Manual catch-up using "Catch Up Days" button</li>
         </ul>
       </div>
     `;
@@ -734,8 +971,8 @@ async function checkDailyIncomeStatus() {
     statusDiv.style.display = 'block';
     
   } catch (err) {
-    console.error('خطأ في التحقق من الحالة:', err);
-    showToast('فشل التحقق من حالة النظام', 'error');
+    console.error('Error checking status:', err);
+    showToast('Failed to check system status', 'error');
   }
 }
 
@@ -978,89 +1215,146 @@ function renderReportSummary(){
   const from = l('reportFrom').value;
   const to = l('reportTo').value;
   
-  // ترتيب البيانات حسب التاريخ تصاعدياً (من الأقدم للأحدث)
+  // ترتيب البيانات حسب التاريخ تصاعدياً
   let rows = entriesCache.slice();
   if(carId && carId!=='all') rows = rows.filter(r=>r.carId===carId);
   if(from) rows = rows.filter(r=>r.date>=from);
   if(to) rows = rows.filter(r=>r.date<=to);
   
-  // التعديل 3: ترتيب البيانات حسب التاريخ تصاعدياً
+  // ترتيب البيانات حسب التاريخ تصاعدياً
   rows.sort((a, b) => new Date(a.date) - new Date(b.date));
   
+  // إزالة التكرارات
+  const uniqueRows = [];
+  const seenIds = new Set();
+  rows.forEach(row => {
+    if (!seenIds.has(row.id)) {
+      seenIds.add(row.id);
+      uniqueRows.push(row);
+    }
+  });
+  
+  rows = uniqueRows;
+  
+  // حساب الإحصائيات
   const income = rows.filter(r=>r.type==='income').reduce((s,r)=>s+Number(r.amount),0);
   const expense = rows.filter(r=>r.type==='expense').reduce((s,r)=>s+Number(r.amount),0);
   const net = income - expense;
   
-  // التعديل 1: حساب إجمالي سعر السيارات ونسبة استرجاع رأس المال
+  // حساب إجمالي سعر السيارات
   let totalCarsPrice = 0;
   if (carId && carId !== 'all') {
-    // إذا تم اختيار سيارة واحدة
     const selectedCar = carsCache.find(c => c.id === carId);
     totalCarsPrice = selectedCar ? Number(selectedCar.price || 0) : 0;
   } else {
-    // إذا تم اختيار جميع السيارات
     totalCarsPrice = carsCache.reduce((sum, car) => sum + Number(car.price || 0), 0);
   }
   
-  // حساب نسبة استرجاع رأس المال (نسبة صافي الدخل إلى سعر السيارة)
+  // حساب نسبة العائد
   let roiPercentage = 0;
   if (totalCarsPrice > 0 && net > 0) {
     roiPercentage = (net / totalCarsPrice) * 100;
   }
-  
+
+  // عرض بسيط على الشاشة
   const out = l('reportSummary');
-  out.innerHTML = `<div style="display:flex;gap:16px; flex-wrap: wrap; margin-bottom: 20px;">
-    <div class="card" style="flex:1; min-width: 150px;">
-      <div class="muted">Revenue</div>
-      <div style="font-weight:800;font-size:20px">${fmtMoney(income)}</div>
-    </div>
-    <div class="card" style="flex:1; min-width: 150px;">
-      <div class="muted">Expenses</div>
-      <div style="font-weight:800;font-size:20px">${fmtMoney(expense)}</div>
-    </div>
-    <div class="card" style="flex:1; min-width: 150px;">
-      <div class="muted">Net</div>
-      <div style="font-weight:800;font-size:20px">${fmtMoney(net)}</div>
-    </div>
-    <div class="card" style="flex:1; min-width: 150px;">
-      <div class="muted">Cars Value / ROI</div>
-      <div style="font-weight:800;font-size:20px">${fmtMoney(totalCarsPrice)}</div>
-      <div style="font-size:14px; color:${roiPercentage > 0 ? '#10b981' : '#ef4444'}; font-weight:600;">
-        ${roiPercentage.toFixed(2)}% ROI
+  let html = `
+    <div style="padding: 15px;">
+      <h2 style="text-align: center; margin-bottom: 20px; color: var(--text);">Report Preview</h2>
+      
+      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:12px; margin-bottom:25px;">
+        <div class="card">
+          <div class="muted">Income</div>
+          <div style="font-weight:800;font-size:20px;color:#10b981">${fmtMoney(income)}</div>
+        </div>
+        <div class="card">
+          <div class="muted">Expenses</div>
+          <div style="font-weight:800;font-size:20px;color:#ef4444">${fmtMoney(expense)}</div>
+        </div>
+        <div class="card">
+          <div class="muted">Net Profit</div>
+          <div style="font-weight:800;font-size:20px;color:#3b82f6">${fmtMoney(net)}</div>
+        </div>
+        <div class="card">
+          <div class="muted">Cars Value / ROI</div>
+          <div style="font-weight:800;font-size:20px;color:#8b5cf6">${fmtMoney(totalCarsPrice)}</div>
+          <div style="font-size:14px; color:${roiPercentage > 0 ? '#10b981' : '#ef4444'}; font-weight:600;">
+            ${roiPercentage.toFixed(2)}% ROI
+          </div>
+        </div>
+      </div>
+      
+      <div style="margin-top:20px;">
+        <h3 style="color:var(--text); margin-bottom:15px;">Data Preview (${rows.length} transactions)</h3>
+  `;
+  
+  if (rows.length > 0) {
+    html += `
+      <div style="overflow-x:auto;">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Car</th>
+              <th>Type</th>
+              <th>Category</th>
+              <th>Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+    `;
+    
+    // عرض أول 20 معاملة فقط للمعاينة
+    const previewRows = rows.slice(0, 40);
+    previewRows.forEach(r => {
+      const carName = escapeHtml((carsCache.find(c=>c.id===r.carId)||{}).name||'-');
+      const typeColor = r.type === 'income' ? '#10b981' : '#ef4444';
+      const typeText = r.type === 'income' ? 'Income' : 'Expense';
+      
+      html += `
+        <tr>
+          <td class="ltr">${r.date}</td>
+          <td>${carName}</td>
+          <td><span style="color:${typeColor}; font-weight:600">${typeText}</span></td>
+          <td>${escapeHtml(r.category || '-')}</td>
+          <td class="ltr" style="font-weight:700;color:${typeColor}">${fmtMoney(r.amount)}</td>
+        </tr>
+      `;
+    });
+    
+    if (rows.length > 40) {
+      html += `
+        <tr>
+          <td colspan="5" style="text-align:center; padding:10px; color:#64748b;">
+            ... and ${rows.length - 40} more transactions (will be shown in PDF)
+          </td>
+        </tr>
+      `;
+    }
+    
+    html += `
+          </tbody>
+        </table>
+      </div>
+    `;
+  } else {
+    html += `
+      <div style="text-align:center; padding:40px; color:#64748b;">
+        <div style="font-size:18px; margin-bottom:10px;">No data in selected period</div>
+      </div>
+    `;
+  }
+  
+  html += `
+        <div style="margin-top:30px; padding:15px; background:var(--card); border-radius:8px; color:var(--muted);">
+          <p><strong>Note:</strong> This is a simplified preview. All data (${rows.length} transactions) will be exported in the PDF file.</p>
+          <p>To export the full report in PDF format, click the "Export PDF" button.</p>
+        </div>
       </div>
     </div>
-  </div>
-  <div style="margin-top:12px">
-    <table style="width:100%">
-      <thead>
-        <tr>
-          <th>Date</th>
-          <th>Car</th>
-          <th>Type</th>
-          <th>Category</th>
-          <th>Amount</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${rows.map(r=>{
-          const carName = escapeHtml((carsCache.find(c=>c.id===r.carId)||{}).name||'-');
-          // التعديل 2: تلوين نوع المدخل
-          const typeColor = r.type === 'income' ? '#10b981' : '#ef4444';
-          const typeText = r.type === 'income' ? 
-            '<span style="color:#10b981; font-weight:600;">Income</span>' : 
-            '<span style="color:#ef4444; font-weight:600;">Expense</span>';
-          
-          return `<tr>
-            <td class="ltr">${r.date}</td>
-            <td>${carName}</td>
-            <td>${typeText}</td>
-            <td>${escapeHtml(r.category)}</td>
-            <td class="ltr" style="font-weight:700">${fmtMoney(r.amount)}</td>
-          </tr>`;
-        }).join('')}
-      </tbody>
-    </table>
-  </div>`;
+  `;
+  
+  out.innerHTML = html;
 }
 
 function renderUsers(){
@@ -1385,10 +1679,10 @@ l('btnDoLogin').addEventListener('click', async ()=>{
 // ---------- Authentication with Daily Income Setup ----------
 onAuthStateChanged(auth, async (user) => {
   try {
-    console.log('تغير حالة المصادقة:', user ? user.email : 'لا يوجد مستخدم');
+    console.log('Auth state changed:', user ? user.email : 'No user');
     
     if (user) {
-      console.log('تم تسجيل دخول:', user.email);
+      console.log('User signed in:', user.email);
       
       window.currentUser = { 
         uid: user.uid, 
@@ -1407,16 +1701,16 @@ onAuthStateChanged(auth, async (user) => {
       showTab('dashboard');
       ensureDemoUsers();
       
-      showToast(`welcome ${window.currentUser.name}!`, 'success');
+      showToast(`Welcome ${window.currentUser.name}!`, 'success');
     } else {
-      console.log('لم يتم تسجيل دخول');
+      console.log('User signed out');
       l('modalLogin').style.display = 'flex';
       detachRealtimeListeners();
       stopDailyIncomeScheduler();
     }
   } catch (error) {
-    console.error('خطأ في معالجة حالة المصادقة:', error);
-    showToast('حدث خطأ في المصادقة: ' + error.message, 'error');
+    console.error('Auth state change error:', error);
+    showToast('Auth error: ' + error.message, 'error');
   }
 });
 
@@ -1447,12 +1741,12 @@ l('btnSignOut').addEventListener('click', async () => {
   try {
     console.log('Sign out button clicked');
     await signOut(auth);
-    showToast('تم تسجيل الخروج بنجاح', 'success');
+    showToast('Signed out successfully', 'success');
     detachRealtimeListeners();
     showTab('dashboard');
   } catch (err) {
     console.error('Sign out error:', err);
-    showToast('فشل تسجيل الخروج: ' + (err.message || err), 'error');
+    showToast('Sign out failed: ' + (err.message || err), 'error');
   }
 });
 
@@ -1480,16 +1774,16 @@ initialUI();
 
 // ---------- PWA Installation ----------
 function setupPWA() {
-  console.log('إعداد PWA...');
+  console.log('Setting up PWA...');
   
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('/service-worker.js')
         .then((registration) => {
-          console.log('✅ Service Worker مسجل بنجاح:', registration.scope);
+          console.log('✅ Service Worker registered:', registration.scope);
         })
         .catch((error) => {
-          console.error('❌ فشل تسجيل Service Worker:', error);
+          console.error('❌ Service Worker registration failed:', error);
         });
     });
   }
@@ -1497,7 +1791,7 @@ function setupPWA() {
   let deferredPrompt;
   const installButton = document.createElement('button');
   installButton.id = 'installPWAButton';
-  installButton.innerHTML = '<i class="fas fa-download"></i> تثبيت التطبيق';
+  installButton.innerHTML = '<i class="fas fa-download"></i> Install App';
   installButton.style.cssText = `
     position: fixed;
     bottom: 20px;
@@ -1530,10 +1824,10 @@ function setupPWA() {
       
       deferredPrompt.userChoice.then((choiceResult) => {
         if (choiceResult.outcome === 'accepted') {
-          console.log('✅ قبل المستخدم تثبيت التطبيق');
-          showToast('تم تثبيت التطبيق بنجاح!', 'success');
+          console.log('✅ User accepted install');
+          showToast('App installed successfully!', 'success');
         } else {
-          console.log('❌ رفض المستخدم تثبيت التطبيق');
+          console.log('❌ User declined install');
         }
         deferredPrompt = null;
       });
@@ -1541,7 +1835,7 @@ function setupPWA() {
   });
   
   window.addEventListener('appinstalled', () => {
-    console.log('التطبيق مثبت بنجاح');
+    console.log('App installed successfully');
     installButton.style.display = 'none';
   });
 }
