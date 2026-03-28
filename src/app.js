@@ -1304,8 +1304,8 @@ function renderReportSummary(){
           <tbody>
     `;
     
-    // عرض أول 20 معاملة فقط للمعاينة
-    const previewRows = rows.slice(0, 40);
+    // عرض أول 200 معاملة فقط للمعاينة
+    const previewRows = rows.slice(0, 200);
     previewRows.forEach(r => {
       const carName = escapeHtml((carsCache.find(c=>c.id===r.carId)||{}).name||'-');
       const typeColor = r.type === 'income' ? '#10b981' : '#ef4444';
