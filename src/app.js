@@ -2,7 +2,7 @@
 import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
 import {
   getFirestore, collection, doc, addDoc, setDoc, getDoc, getDocs,
-  onSnapshot, updateDoc, deleteDoc, query, where, orderBy, limit, serverTimestamp, runTransaction
+  onSnapshot, updateDoc, deleteDoc, query, where, serverTimestamp, runTransaction
 } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
 import {
   getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged
@@ -33,7 +33,6 @@ info('App initialized with language support');
 
 // ---------- Local caches ----------
 let carsCache = [], entriesCache = [], usersCache = [], settingsCache = { currency: 'MRU', autoBackupIntervalMinutes: 60, theme: 'light' };
-const ENTRIES_READ_LIMIT = 500;
 
 // ---------- Unsubscribe holders ----------
 let unsubCars = null, unsubEntries = null, unsubUsers = null;
@@ -241,32 +240,6 @@ function getDefaultEntriesFromDate(){
   return d.toISOString().slice(0, 10);
 }
 
-function getBoundedEntriesFromDate(from = '', to = ''){
-  if(from) return from;
-  if(to) {
-    const d = new Date(to);
-    d.setDate(d.getDate() - 29);
-    return d.toISOString().slice(0, 10);
-  }
-  return getDefaultEntriesFromDate();
-}
-
-function buildEntriesDateQuery(from = getDefaultEntriesFromDate(), to = '', maxRows = ENTRIES_READ_LIMIT){
-  const constraints = [];
-  if(from) constraints.push(where('date', '>=', from));
-  if(to) constraints.push(where('date', '<=', to));
-  constraints.push(orderBy('date', 'desc'), limit(maxRows));
-  return query(collection(db, 'entries'), ...constraints);
-}
-
-async function loadEntriesForDateRange(from = getDefaultEntriesFromDate(), to = ''){
-  const snapshot = await getDocs(buildEntriesDateQuery(from, to));
-  entriesCache = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-  renderEntriesTable();
-  updateDashboard();
-  return entriesCache;
-}
-
 function filterRowsByType(rows, type){
   if(type && type !== 'all') return rows.filter(r => r.type === type);
   return rows;
@@ -425,7 +398,6 @@ async function exportToPDF() {
     const carId = l('reportCar').value;
     const from = l('reportFrom').value;
     const to = l('reportTo').value;
-    await loadEntriesForDateRange(getBoundedEntriesFromDate(from, to), to);
     let rows = getReportRows();
 
     if (rows.length === 0) {
@@ -729,7 +701,10 @@ class DailyIncomeProcessor {
   }
 
   async refreshEntriesCache() {
-    await loadEntriesForDateRange();
+    const entriesSnapshot = await getDocs(collection(db, 'entries'));
+    entriesCache = entriesSnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderEntriesTable();
+    updateDashboard();
   }
 
   async logCatchUpProcessing(dates, count, total) {
@@ -921,7 +896,7 @@ function attachRealtimeListeners() {
     showToast('Failed to load cars: ' + err.message, 'error'); 
   });
 
-  unsubEntries = onSnapshot(buildEntriesDateQuery(), snap => {
+  unsubEntries = onSnapshot(collection(db, 'entries'), snap => {
     entriesCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     renderEntriesTable();
     updateDashboard();
@@ -1129,8 +1104,8 @@ function renderEntriesTable(){
   let rows = entriesCache.slice().sort((a,b)=> new Date(b.date) - new Date(a.date));
   const carFilter = l('filterCar').value;
   const typeFilter = l('filterType')?.value || 'all';
+  const from = l('filterFrom').value || getDefaultEntriesFromDate();
   const to = l('filterTo').value;
-  const from = getBoundedEntriesFromDate(l('filterFrom').value, to);
 
   if(carFilter && carFilter!=='all') rows = rows.filter(r=> r.carId===carFilter);
   rows = filterRowsByType(rows, typeFilter);
@@ -1655,41 +1630,21 @@ l('entriesTable').querySelector('tbody').addEventListener('click', async (ev)=>{
 });
 
 // Filters, reports, exports
-l('btnApplyFilter').addEventListener('click', async ()=> {
-  try {
-    await loadEntriesForDateRange(getBoundedEntriesFromDate(l('filterFrom').value, l('filterTo').value), l('filterTo').value);
-  } catch (err) {
-    console.error('Failed to load filtered entries', err);
-    showToast('Failed to load entries: ' + (err.message || err), 'error');
-  }
-});
-l('btnClearFilter').addEventListener('click', async ()=> { 
+l('btnApplyFilter').addEventListener('click', ()=> renderEntriesTable());
+l('btnClearFilter').addEventListener('click', ()=> { 
   l('filterCar').value='all'; 
   if(l('filterType')) l('filterType').value='all';
   l('filterFrom').value=''; 
   l('filterTo').value=''; 
-  await loadEntriesForDateRange();
+  renderEntriesTable(); 
 });
 
-l('btnGenerate').addEventListener('click', async ()=> { 
-  try {
-    await loadEntriesForDateRange(getBoundedEntriesFromDate(l('reportFrom').value, l('reportTo').value), l('reportTo').value);
-    renderReportSummary(); 
-    showToast(t('generateReportSuccess'), 'success'); 
-  } catch (err) {
-    console.error('Failed to load report entries', err);
-    showToast('Failed to load report entries: ' + (err.message || err), 'error');
-  }
+l('btnGenerate').addEventListener('click', ()=> { 
+  renderReportSummary(); 
+  showToast(t('generateReportSuccess'), 'success'); 
 });
 
-l('btnExportCSVReport').addEventListener('click', async ()=> {
-  try {
-    await loadEntriesForDateRange(getBoundedEntriesFromDate(l('reportFrom').value, l('reportTo').value), l('reportTo').value);
-  } catch (err) {
-    console.error('Failed to load report entries', err);
-    showToast('Failed to load report entries: ' + (err.message || err), 'error');
-    return;
-  }
+l('btnExportCSVReport').addEventListener('click', ()=> {
   let rows = getReportRows();
 
   const isAr = currentLang === 'ar';
@@ -1708,9 +1663,7 @@ l('btnExportXLS').addEventListener('click', ()=> l('btnExportCSVReport').click()
 
 // Backup / restore
 const handleBackupDownload = async () => { 
-  const entriesSnapshot = await getDocs(collection(db,'entries'));
-  const allEntries = entriesSnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-  const backup = { cars: carsCache, entries: allEntries, users: usersCache, settings: settingsCache, ts: Date.now() }; 
+  const backup = { cars: carsCache, entries: entriesCache, users: usersCache, settings: settingsCache, ts: Date.now() }; 
   downloadFile('car_rental_backup.json','application/json;charset=utf-8;', JSON.stringify(backup,null,2)); 
   showToast(t('backupDownloadSuccess'), 'success'); 
 };
